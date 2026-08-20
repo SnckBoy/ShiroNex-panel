@@ -1,1 +1,199 @@
-# ShiroNex-panel
+# ShiroNex Hosting Panel
+
+ShiroNex is a self-hosted game-server control panel with a distributed Linux node daemon.
+
+## One-command Ubuntu installer
+
+On a fresh supported Ubuntu 22.04 or 24.04 VPS, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash
+```
+
+The installer opens a menu with panel, node, panel-plus-node, update, repair, uninstall, and system-information actions. Non-interactive modes are also available:
+
+```bash
+sudo bash install.sh panel
+sudo bash install.sh node
+sudo bash install.sh both
+sudo bash install.sh update
+sudo bash install.sh repair
+sudo bash install.sh uninstall
+```
+
+After installation, the management command is available as `sudo shironex`. Use `sudo shironex --help` for panel/node service controls, logs, updates, repairs, backups, and health information.
+
+For a panel-only VPS, select **Install ShiroNex Panel**. For a separate node-only VPS, select **Install ShiroNex Node** or use the node command generated in the panel under **Nodes → Create Node**. The **Panel + Node** option installs the panel first and then asks for node credentials; if credentials are not supplied, it prints the safe generated node-registration workflow instead of inventing credentials. It is designed so one panel can manage **many independent VPS nodes**, each running Docker containers locally.
+
+## Architecture
+
+```text
+                    ShiroNex Panel VPS
+               ┌──────────────────────┐
+               │ Web UI + API + DB     │
+               │ Node management       │
+               │ Allocations           │
+               │ Cloudflare            │
+               └──────────┬───────────┘
+                          │ HTTPS
+          ┌───────────────┼────────────────┐
+          │               │                │
+          ▼               ▼                ▼
+     ShiroNex Node 1     ShiroNex Node 2      ShiroNex Node N
+     VPS / Docker    VPS / Docker     VPS / Docker
+       │ │ │            │ │ │            │ │ │
+     Server ...       Server ...       Server ...
+```
+
+There is **no hard two-node limit**. Create as many nodes as your infrastructure and database can support. Every node has its own credential and daemon process.
+
+ShiroNex's daemon is an independent implementation. It does not copy proprietary code from Pterodactyl/Wings. The architecture is intentionally similar at a high level: a central panel schedules servers and a per-node daemon owns Docker operations.
+
+## Panel installation on Ubuntu
+
+1. Copy the ShiroNex project ZIP to your panel VPS and extract it.
+2. Enter the project directory.
+3. Run:
+
+```bash
+sudo bash install.sh
+```
+
+The installer installs Node.js when needed, installs dependencies, creates `.env` secrets when missing, builds ShiroNex, and starts it with PM2 on port `6767`.
+
+Open:
+
+```text
+http://YOUR_PANEL_IP:6767
+```
+
+For production, put ShiroNex behind HTTPS using your preferred reverse proxy and firewall the application appropriately.
+
+## Create and connect a node
+
+1. Log in as an administrator.
+2. Open **Nodes → Create Node**.
+3. Enter the node name, hostname/FQDN, public IP and API port.
+4. Enable TLS when the node endpoint has a valid certificate.
+5. Create the node.
+6. ShiroNex displays a **temporary setup command**.
+7. Copy that command and run it as root on the separate Ubuntu/Debian node VPS.
+
+The command is conceptually:
+
+```bash
+curl -fsSL https://YOUR-SHIRONEX-DOMAIN/node.sh | bash -s -- \
+  --panel https://YOUR-SHIRONEX-DOMAIN \
+  --node-id NODE_ID \
+  --setup-token TEMPORARY_TOKEN \
+  --port 6768
+```
+
+The setup token is single-use and expires quickly. The installer registers the node, receives a per-node credential, installs Docker and Node.js if required, builds the daemon, creates `shironex-node.service`, and starts it.
+
+Check the node:
+
+```bash
+sudo systemctl status shironex-node
+sudo journalctl -u shironex-node -f
+```
+
+## Multiple nodes
+
+Repeat the same process for Node 2, Node 3, Node 4, and so on. Each node gets a different node ID and credential.
+
+Example:
+
+```text
+Panel VPS
+  ├── Germany Node 1
+  ├── Singapore Node 1
+  ├── India Node 1
+  └── US Node 1
+```
+
+When creating a server, select the desired online node and an available allocation. The panel sends Docker operations to that selected node daemon.
+
+## Node daemon
+
+Installed at:
+
+```text
+/opt/shironex-node
+/etc/shironex-node/config.json
+/var/lib/shironex/servers
+```
+
+Service:
+
+```text
+shironex-node.service
+```
+
+Useful commands:
+
+```bash
+sudo systemctl status shironex-node
+sudo systemctl restart shironex-node
+sudo journalctl -u shironex-node -f
+```
+
+Update:
+
+```bash
+sudo /opt/shironex-node/update.sh
+```
+
+Uninstall the daemon without deleting server data:
+
+```bash
+sudo /opt/shironex-node/uninstall.sh
+```
+
+## Security model
+
+- Per-node credentials
+- Temporary node setup tokens
+- Encrypted node secrets on the panel
+- Constant-time daemon credential comparison
+- Admin-only node management
+- Docker access remains on the node daemon
+- Server paths are restricted to the configured server directory
+- Infrastructure actions can be audited
+- Cloudflare credentials stay server-side
+- TLS is supported for node connections
+
+Do not expose the Docker socket directly to end users.
+
+## Docker
+
+Each managed Minecraft server is created as its own Docker container on its selected node. The daemon controls lifecycle, logs, resource telemetry and server files.
+
+Install Docker from Docker's official Ubuntu repository for production deployments rather than relying on an unreviewed third-party installer. Docker's current Ubuntu documentation lists supported Ubuntu releases and provides the repository installation procedure. citeturn0search0
+
+## Cloudflare and Minecraft
+
+ShiroNex can manage Cloudflare DNS records and proxy state. Normal Cloudflare HTTP proxying is not treated as a generic Minecraft TCP proxy. For ordinary Minecraft DNS records, use DNS-only unless an appropriate Cloudflare TCP proxy service is actually available to the account.
+
+## Environment variables
+
+Copy `.env.example` to `.env` and set production secrets, especially:
+
+```text
+JWT_SECRET=
+NODE_ENCRYPTION_KEY=
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
+```
+
+Never commit real secrets.
+
+## Production checklist
+
+- Use HTTPS for the panel.
+- Use a valid TLS certificate for node FQDNs.
+- Open only the required panel/node ports.
+- Keep Docker and Ubuntu updated.
+- Back up the ShiroNex data directory and database files.
+- Rotate node credentials when a node is compromised.
+- Never give normal users Docker socket or host-shell access.
