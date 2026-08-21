@@ -29,6 +29,14 @@ EOF
 }
 
 require_root(){ [[ "$EUID" -eq 0 ]] || fail "Run with sudo/root."; }
+check_os(){
+  [[ -r /etc/os-release ]] || fail "Cannot detect operating system."
+  . /etc/os-release
+  case "$ID:${VERSION_ID:-}" in
+    ubuntu:22.04|ubuntu:24.04|debian:11|debian:12|debian:13) ;;
+    *) fail "Supported OS: Ubuntu 22.04/24.04 or Debian 11/12/13. Detected: ${PRETTY_NAME:-$ID}" ;;
+  esac
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,6 +50,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_root
+check_os
 [[ -n "$PANEL_URL" && -n "$NODE_ID" && -n "$SETUP_TOKEN" ]] || { usage; exit 2; }
 [[ "$PANEL_URL" =~ ^https?:// ]] || fail "Panel URL must start with http:// or https://."
 [[ "$NODE_PORT" =~ ^[0-9]+$ && "$NODE_PORT" -ge 1024 && "$NODE_PORT" -le 65535 ]] || fail "Invalid node port."
@@ -56,13 +65,13 @@ fi
 
 if ! command -v docker >/dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
   . /etc/os-release
   cat >/etc/apt/sources.list.d/docker.sources <<EOF
 Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
+URIs: https://download.docker.com/linux/${ID}
+Suites: ${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}
 Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
@@ -70,7 +79,7 @@ EOF
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
-systemctl enable --now docker
+if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
 docker info >/dev/null 2>&1 || fail "Docker is not ready."
 
 install -d -m 700 "$NODE_DIR" "$CONFIG_DIR" "$DATA_DIR"

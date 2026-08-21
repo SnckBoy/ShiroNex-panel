@@ -87,7 +87,8 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 6767;
+const PORT = Number(process.env.PORT || 6767);
+const HOST = process.env.HOST || "0.0.0.0";
 
 // Actual file uploads go through multer (disk-backed, see servers.ts), which never
 // touches these parsers. A 50gb limit here only meant any client could send an
@@ -146,8 +147,8 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, () => {
-    console.log(`ShiroNex Panel running on port ${PORT}`);
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`ShiroNex Panel running on http://${HOST}:${PORT}`);
   });
 }
 

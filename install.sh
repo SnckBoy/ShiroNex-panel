@@ -60,10 +60,20 @@ require_root(){ [[ "$EUID" -eq 0 ]] || fail "Run with sudo/root."; }
 check_os() {
   [[ -r /etc/os-release ]] || fail "Cannot detect operating system."
   . /etc/os-release
-  [[ "$ID" == "ubuntu" ]] || fail "Supported OS: Ubuntu 22.04/24.04. Detected: $ID"
-  case "${VERSION_ID:-}" in
-    22.04|24.04) ;;
-    *) fail "Supported Ubuntu versions: 22.04 and 24.04. Detected: ${VERSION_ID:-unknown}" ;;
+  case "$ID" in
+    ubuntu)
+      case "${VERSION_ID:-}" in
+        22.04|24.04) ;;
+        *) fail "Supported Ubuntu versions: 22.04 and 24.04. Detected: ${VERSION_ID:-unknown}" ;;
+      esac
+      ;;
+    debian)
+      case "${VERSION_ID:-}" in
+        11|12|13) ;;
+        *) fail "Supported Debian versions: 11, 12, and 13. Detected: ${VERSION_ID:-unknown}" ;;
+      esac
+      ;;
+    *) fail "Supported OS: Ubuntu 22.04/24.04 or Debian 11/12/13. Detected: $ID" ;;
   esac
   case "$(dpkg --print-architecture)" in
     amd64|arm64) ;;
@@ -87,27 +97,27 @@ install_base_dependencies() {
 
 install_docker() {
   if command -v docker >/dev/null 2>&1; then
-    systemctl enable --now docker
+    if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
     docker info >/dev/null 2>&1 || fail "Docker is installed but not responding."
     ok "Docker detected"
     return
   fi
 
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
   . /etc/os-release
   cat >/etc/apt/sources.list.d/docker.sources <<EOF
 Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
+URIs: https://download.docker.com/linux/${ID}
+Suites: ${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}
 Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  systemctl enable --now docker
+  if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
   docker info >/dev/null 2>&1 || fail "Docker installation failed."
   ok "Docker installed"
 }
