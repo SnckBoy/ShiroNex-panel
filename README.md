@@ -229,3 +229,7 @@ The diagnostics command checks the panel health endpoint, PM2, Docker, the optio
 ## Appearance system
 
 The Settings page now supports immediate theme presets, dark/light/system appearance, accent colors, background effects, and reduced motion. Preferences are applied through document attributes and CSS variables without requiring a reload. The reduced-motion setting also respects the operating system preference.
+
+## Source integration and CI
+
+The repository includes the production installer set (`install.sh`, `node-install.sh`, and `shironex`), the repository `.gitignore`, and a read-only GitHub Actions workflow at `.github/workflows/ci.yml`. CI runs panel dependency installation, TypeScript lint, production build, node-daemon dependency installation, node-daemon build, and shell syntax checks. The installer can bootstrap from the GitHub source tree and falls back to the published source archive during a source-tree migration.
