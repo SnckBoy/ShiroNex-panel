@@ -197,3 +197,35 @@ Never commit real secrets.
 - Back up the ShiroNex data directory and database files.
 - Rotate node credentials when a node is compromised.
 - Never give normal users Docker socket or host-shell access.
+
+## Production source layout
+
+The repository source distribution contains the panel application under `src/`, static assets under `public/`, the node daemon under `node-daemon/`, and the production entrypoints `install.sh`, `node-install.sh`, and `shironex`. Runtime data, environment files, dependencies, builds, logs, credentials, and archives are excluded by `.gitignore`.
+
+## HTTPS
+
+After the panel is installed and its DNS A record points to the VPS, run:
+
+```bash
+sudo shironex ssl
+```
+
+The command asks for the domain and ACME email, installs Nginx and Certbot, configures reverse proxying to `127.0.0.1:6767`, enables HTTP-to-HTTPS redirection, adds secure headers, and removes the public firewall rule for the application port. Keep ports 80 and 443 open for certificate issuance and renewal.
+
+## Diagnostics and operations
+
+Use the following commands when checking a deployment:
+
+```bash
+sudo shironex diagnostics
+sudo shironex backup
+sudo shironex logs
+sudo shironex update
+sudo shironex repair
+```
+
+The diagnostics command checks the panel health endpoint, PM2, Docker, the optional node service, disk, memory, and listening ports. Backups are written below `/var/backups/shironex` with restrictive permissions.
+
+## Appearance system
+
+The Settings page now supports immediate theme presets, dark/light/system appearance, accent colors, background effects, and reduced motion. Preferences are applied through document attributes and CSS variables without requiring a reload. The reduced-motion setting also respects the operating system preference.

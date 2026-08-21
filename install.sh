@@ -19,9 +19,9 @@ if [[ "${SHIRONEX_BOOTSTRAPPED:-0}" != "1" && ! -f "$SOURCE_DIR/package.json" ]]
   BOOTSTRAP_TMP="$(mktemp -d /tmp/shironex-bootstrap.XXXXXX)"
   trap 'rm -rf "$BOOTSTRAP_TMP"' EXIT
   apt-get update
-  apt-get install -y ca-certificates curl unzip
-  curl -fL "${SHIRONEX_ARCHIVE_URL:-https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/ShiroNex-fixed-improved.zip}" -o "$BOOTSTRAP_TMP/shironex.zip"
-  unzip -q "$BOOTSTRAP_TMP/shironex.zip" -d "$BOOTSTRAP_TMP/extracted"
+  apt-get install -y ca-certificates curl tar
+  curl -fL "${SHIRONEX_ARCHIVE_URL:-https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/shironex-source.tar.gz}" -o "$BOOTSTRAP_TMP/shironex-source.tar.gz"
+  tar -xzf "$BOOTSTRAP_TMP/shironex-source.tar.gz" -C "$BOOTSTRAP_TMP/extracted"
   BOOTSTRAP_SOURCE="$(find "$BOOTSTRAP_TMP/extracted" -mindepth 1 -maxdepth 2 -type f -name install.sh -printf '%h\n' | head -1)"
   [[ -n "$BOOTSTRAP_SOURCE" && -f "$BOOTSTRAP_SOURCE/install.sh" ]] || { echo "The ShiroNex archive does not contain install.sh" >&2; exit 1; }
   export SHIRONEX_BOOTSTRAPPED=1
@@ -201,6 +201,68 @@ install_both(){
   install_node
 }
 
+configure_ssl(){
+  require_root
+  check_os
+  local domain email server_ip
+  if $NONINTERACTIVE; then
+    domain="${SHIRONEX_DOMAIN:-}"
+    email="${SHIRONEX_EMAIL:-}"
+  else
+    read -r -p "Domain (for example panel.example.com): " domain
+    read -r -p "ACME email: " email
+  fi
+  [[ "$domain" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || fail "Invalid domain name."
+  [[ "$email" == *"@"*.* ]] || fail "Invalid email address."
+  server_ip="$(hostname -I | awk '{print $1}')"
+  getent ahostsv4 "$domain" >/dev/null || fail "DNS does not resolve for $domain. Point its A record to $server_ip first."
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y nginx certbot python3-certbot-nginx
+  cat >/etc/nginx/sites-available/shironex <<EOF
+server {
+  listen 80;
+  server_name $domain;
+  location / {
+    proxy_pass http://127.0.0.1:$PANEL_PORT;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options SAMEORIGIN always;
+  add_header Referrer-Policy strict-origin-when-cross-origin always;
+}
+EOF
+  ln -sfn /etc/nginx/sites-available/shironex /etc/nginx/sites-enabled/shironex
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t
+  systemctl enable --now nginx
+  certbot --nginx -d "$domain" --redirect --non-interactive --agree-tos -m "$email"
+  ufw delete allow "$PANEL_PORT/tcp" >/dev/null 2>&1 || true
+  ufw allow 80/tcp >/dev/null 2>&1 || true
+  ufw allow 443/tcp >/dev/null 2>&1 || true
+  ok "HTTPS configured at https://$domain"
+}
+
+backup_all(){ require_root; backup_path; }
+
+diagnostics(){
+  require_root
+  printf '\nShiroNex diagnostics\n\n'
+  check_os || true
+  printf 'Panel service: '; pm2 describe "$APP_NAME" >/dev/null 2>&1 && echo 'OK' || echo 'ERROR'
+  printf 'Panel health: '; curl -fsS --max-time 5 "http://127.0.0.1:${PANEL_PORT}/health" >/dev/null 2>&1 && echo 'OK' || echo 'ERROR'
+  printf 'Docker: '; docker info >/dev/null 2>&1 && echo 'OK' || echo 'ERROR'
+  printf 'Node service: '; systemctl is-active --quiet "$NODE_SERVICE" && echo 'OK' || echo 'WARNING/not installed'
+  printf 'Disk: '; df -P / | awk 'NR==2 {print $5 " used"}'
+  printf 'Memory: '; free -h | awk '/Mem:/ {print $3 " / " $2}'
+  printf 'Listening ports:\n'; ss -ltnp 2>/dev/null | grep -E ":($PANEL_PORT|80|443|$NODE_PORT)\\b" || true
+}
+
 update_all(){
   require_root
   backup_path
@@ -253,28 +315,31 @@ menu(){
 [1] Install ShiroNex Panel
 [2] Install ShiroNex Node
 [3] Install Panel + Node
-[4] Update ShiroNex
-[5] Repair Installation
-[6] Uninstall ShiroNex
-[7] System Information
+[4] Configure HTTPS
+[5] Update ShiroNex
+[6] Repair Installation
+[7] Backup
+[8] Diagnostics
+[9] Uninstall ShiroNex
+[10] System Information
 [0] Exit
 EOF
   local option
   read -r -p $'\nSelect an option: ' option
   case "$option" in
-    1) install_panel;; 2) install_node;; 3) install_both;; 4) update_all;; 5) repair_all;; 6) uninstall_all;; 7) system_info;; 0) exit 0;; *) warn "Invalid option";;
+    1) install_panel;; 2) install_node;; 3) install_both;; 4) configure_ssl;; 5) update_all;; 6) repair_all;; 7) backup_all;; 8) diagnostics;; 9) uninstall_all;; 10) system_info;; 0) exit 0;; *) warn "Invalid option";;
   esac
 }
 
 main(){
   local action="${1:-menu}"
   if [[ "$action" == "-h" || "$action" == "--help" ]]; then
-    printf 'Usage: sudo bash install.sh [panel|node|both|update|repair|uninstall|info]\n'
+    printf 'Usage: sudo bash install.sh [panel|node|both|ssl|update|repair|backup|diagnostics|uninstall|info]\n'
     exit 0
   fi
   require_root
   case "$action" in
-    panel) install_panel;; node) install_node;; both) install_both;; update) update_all;; repair) repair_all;; uninstall) uninstall_all;; info|system-info) system_info;; menu) menu;; --non-interactive) NONINTERACTIVE=true; shift; main "${1:-panel}";; -h|--help) printf 'Usage: sudo bash install.sh [panel|node|both|update|repair|uninstall|info]\n';;
+    panel) install_panel;; node) install_node;; both) install_both;; ssl) NONINTERACTIVE=true; configure_ssl;; update) update_all;; repair) repair_all;; backup) backup_all;; diagnostics) diagnostics;; uninstall) uninstall_all;; info|system-info) system_info;; menu) menu;; --non-interactive) NONINTERACTIVE=true; shift; main "${1:-panel}";; -h|--help) printf 'Usage: sudo bash install.sh [panel|node|both|ssl|update|repair|backup|diagnostics|uninstall|info]\n';;
     *) fail "Unknown action: $action";;
   esac
 }

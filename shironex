@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+APP_NAME="shironex-panel"
+NODE_SERVICE="shironex-node"
+APP_DIR="${SHIRONEX_PANEL_DIR:-/opt/shironex-panel}"
+BACKUP_ROOT="/var/backups/shironex"
+
+run_root(){ [[ "$EUID" -eq 0 ]] || { echo "Use sudo shironex for this operation." >&2; exit 1; }; }
+panel(){ case "${1:-status}" in start) pm2 start "$APP_NAME";; stop) pm2 stop "$APP_NAME";; restart) pm2 restart "$APP_NAME" --update-env;; status) pm2 status "$APP_NAME";; logs) pm2 logs "$APP_NAME" --lines 100;; *) echo "Usage: shironex panel {start|stop|restart|status|logs}"; exit 2;; esac; }
+node(){ run_root; case "${1:-status}" in start) systemctl start "$NODE_SERVICE";; stop) systemctl stop "$NODE_SERVICE";; restart) systemctl restart "$NODE_SERVICE";; status) systemctl status "$NODE_SERVICE" --no-pager;; logs) journalctl -u "$NODE_SERVICE" -n 100 --no-pager;; *) echo "Usage: shironex node {start|stop|restart|status|logs}"; exit 2;; esac; }
+backup(){ run_root; local out="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"; install -d -m 700 "$out"; [[ -d "$APP_DIR/.data" ]] && cp -a "$APP_DIR/.data" "$out/panel-data"; [[ -f "$APP_DIR/.env" ]] && cp -a "$APP_DIR/.env" "$out/panel.env"; [[ -f /etc/shironex-node/config.json ]] && cp -a /etc/shironex-node/config.json "$out/node-config.json"; echo "Backup created: $out"; }
+info(){ run_root; bash "$APP_DIR/install.sh" info; }
+update(){ run_root; bash "$APP_DIR/install.sh" update; }
+repair(){ run_root; bash "$APP_DIR/install.sh" repair; }
+ssl(){ run_root; bash "$APP_DIR/install.sh" ssl; }
+diagnostics(){ run_root; bash "$APP_DIR/install.sh" diagnostics; }
+menu(){ while true; do cat <<'EOF'
+
+ShiroNex Management
+
+[1] Start Panel
+[2] Stop Panel
+[3] Restart Panel
+[4] Panel Status
+[5] Start Node
+[6] Stop Node
+[7] Restart Node
+[8] Node Status
+[9] View Logs
+[10] Update ShiroNex
+[11] Repair ShiroNex
+[12] System Information
+[13] Backup
+[14] Configure HTTPS
+[15] Diagnostics
+[0] Exit
+EOF
+read -r -p $'\nSelect an option: ' x; case "$x" in 1) panel start;;2) panel stop;;3) panel restart;;4) panel status;;5) node start;;6) node stop;;7) node restart;;8) node status;;9) node logs;;10) update;;11) repair;;12) info;;13) backup;;14) ssl;;15) diagnostics;;0) return;;*) echo "Invalid option";; esac; done; }
+case "${1:-menu}" in panel) panel "${2:-status}";; node) node "${2:-status}";; update) update;; repair) repair;; uninstall) run_root; bash "$APP_DIR/install.sh" uninstall;; info) info;; logs) node logs;; backup) backup;; diagnostics) diagnostics;; ssl) ssl;; menu) run_root; menu;; -h|--help) echo "Usage: sudo shironex [panel|node|update|repair|uninstall|info|logs|backup|diagnostics|ssl] [action]";; *) echo "Unknown command. Use: sudo shironex --help"; exit 2;; esac

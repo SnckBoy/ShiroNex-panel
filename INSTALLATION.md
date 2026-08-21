@@ -271,3 +271,11 @@ Back up the panel’s `.data/` directory, `.env`, and any server data that is st
 [2]: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm/ "npm: Downloading and installing Node.js and npm"
 
 [3]: https://documentation.ubuntu.com/server/how-to/security/firewalls/ "Ubuntu Server documentation: Firewall"
+
+## 14. HTTPS, diagnostics, and appearance controls
+
+After DNS points to the panel VPS, `sudo shironex ssl` installs Nginx and Certbot, configures a reverse proxy to `127.0.0.1:6767`, enables HTTPS redirection, and removes the public application-port firewall rule. Use `sudo shironex diagnostics` to check panel health, PM2, Docker, the optional node service, disk, memory, and listening ports. Use `sudo shironex backup` before upgrades or configuration changes.
+
+The Settings page provides immediate theme presets, dark/light/system appearance, accent colors, background effects, and reduced motion. These preferences are applied without a page reload and the interface respects `prefers-reduced-motion`.
+
+The clean source layout uses `src/` for application code, `public/` for static assets, `node-daemon/` for the node agent, `scripts/` for supported maintenance scripts, and the root `install.sh`, `node-install.sh`, and `shironex` commands. Do not commit `.env`, `.data/`, `dist/`, `node_modules/`, logs, credentials, or generated archives.
