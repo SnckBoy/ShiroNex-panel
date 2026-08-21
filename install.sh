@@ -5,7 +5,6 @@ APP_NAME="shironex-panel"
 NODE_SERVICE="shironex-node"
 REPO_URL="${SHIRONEX_REPO_URL:-https://github.com/SnckBoy/ShiroNex-panel.git}"
 BRANCH="${SHIRONEX_BRANCH:-main}"
-SOURCE_ARCHIVE_URL="${SHIRONEX_SOURCE_ARCHIVE_URL:-https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/shironex-source.tar.gz}"
 APP_DIR="${SHIRONEX_PANEL_DIR:-/opt/shironex-panel}"
 NODE_DIR="${SHIRONEX_NODE_DIR:-/opt/shironex-node}"
 NODE_CONFIG_DIR="/etc/shironex-node"
@@ -17,7 +16,10 @@ LOG_FILE="/var/log/shironex-installer.log"
 BOOTSTRAP_TMP=""
 
 cleanup() {
-  [[ -n "${BOOTSTRAP_TMP:-}" && -d "$BOOTSTRAP_TMP" ]] && rm -rf "$BOOTSTRAP_TMP"
+  if [[ -n "${BOOTSTRAP_TMP:-}" && -d "$BOOTSTRAP_TMP" ]]; then
+    rm -rf "$BOOTSTRAP_TMP"
+  fi
+  return 0
 }
 trap cleanup EXIT
 
@@ -25,6 +27,24 @@ info(){ printf '\033[1;36m[INFO]\033[0m %s\n' "$*"; }
 ok(){ printf '\033[1;32m[ OK ]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
 fail(){ printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+
+require_tty() {
+  if ! ( : </dev/tty ) 2>/dev/null; then
+    fail "Interactive input requires a controlling terminal (/dev/tty). Run with a terminal, or use an explicit command such as: diagnostics, panel, node, or ssl."
+  fi
+}
+
+tty_read() {
+  local prompt="$1" variable="$2"
+  require_tty
+  IFS= read -r -p "$prompt" "$variable" </dev/tty || fail "Could not read interactive input from /dev/tty."
+}
+
+tty_confirm() {
+  local prompt="$1" answer
+  tty_read "$prompt" answer
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
 
 banner() {
 cat <<'EOF'
@@ -102,16 +122,9 @@ bootstrap_source() {
   install_base_dependencies
   BOOTSTRAP_TMP="$(mktemp -d /tmp/shironex-bootstrap.XXXXXX)"
   info "Downloading ShiroNex source from GitHub..."
-  if git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$BOOTSTRAP_TMP/repo" >/dev/null 2>&1 && [[ -f "$BOOTSTRAP_TMP/repo/package.json" ]]; then
-    SOURCE_DIR="$BOOTSTRAP_TMP/repo"
-  else
-    warn "GitHub source tree is unavailable; downloading the published ShiroNex source archive."
-    mkdir -p "$BOOTSTRAP_TMP/archive"
-    curl -fsSL "$SOURCE_ARCHIVE_URL" -o "$BOOTSTRAP_TMP/shironex-source.tar.gz" || fail "Could not download ShiroNex source from GitHub."
-    tar -xzf "$BOOTSTRAP_TMP/shironex-source.tar.gz" -C "$BOOTSTRAP_TMP/archive"
-    SOURCE_DIR="$(find "$BOOTSTRAP_TMP/archive" -mindepth 1 -maxdepth 2 -type f -name package.json -printf '%h\n' | head -1)"
-  fi
-  [[ -n "${SOURCE_DIR:-}" && -f "$SOURCE_DIR/package.json" ]] || fail "Downloaded ShiroNex source does not contain package.json."
+  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$BOOTSTRAP_TMP/repo" >/dev/null 2>&1 || fail "Could not download the ShiroNex source tree from GitHub."
+  SOURCE_DIR="$BOOTSTRAP_TMP/repo"
+  [[ -f "$SOURCE_DIR/package.json" ]] || fail "Downloaded ShiroNex source does not contain package.json."
   [[ -f "$SOURCE_DIR/install.sh" ]] || fail "Downloaded ShiroNex source does not contain install.sh."
 }
 
@@ -158,6 +171,64 @@ configure_panel() {
   PORT="$PANEL_PORT" pm2 start ecosystem.config.cjs --name "$APP_NAME" --update-env
   pm2 save
   ok "Panel built and started"
+}
+
+install_panel_docker() {
+  require_root
+  check_os
+  check_network
+  install_base_dependencies
+  install_docker
+  [[ -d "$APP_DIR/.data" || -f "$APP_DIR/.env" ]] && backup
+  bootstrap_source
+  install -d -m 750 "$APP_DIR"
+  cp -a "$SOURCE_DIR"/. "$APP_DIR/"
+  cd "$APP_DIR"
+  [[ -f .env ]] || cp .env.example .env
+  chmod 600 .env
+  set_env() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" .env; then
+      sed -i "s#^${key}=.*#${key}=\"${value}\"#" .env
+    else
+      printf '%s="%s"\n' "$key" "$value" >> .env
+    fi
+  }
+  set_env PORT "$PANEL_PORT"
+  set_env NODE_ENV production
+  grep -q '^JWT_SECRET=' .env || printf 'JWT_SECRET="%s"\n' "$(openssl rand -hex 32)" >> .env
+  grep -q '^NODE_AUTH_SECRET=' .env || printf 'NODE_AUTH_SECRET="%s"\n' "$(openssl rand -hex 32)" >> .env
+  grep -q '^NODE_ENCRYPTION_KEY=' .env || printf 'NODE_ENCRYPTION_KEY="%s"\n' "$(openssl rand -hex 32)" >> .env
+  cat > Dockerfile.shironex <<'EOF'
+FROM node:22-bookworm-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --no-audit --no-fund
+COPY . .
+RUN npm run lint && npm run build
+ENV NODE_ENV=production
+EXPOSE 6767
+CMD ["npm", "start"]
+EOF
+  cat > docker-compose.yml <<EOF
+services:
+  shironex-panel:
+    build:
+      context: .
+      dockerfile: Dockerfile.shironex
+    container_name: shironex-panel
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${PANEL_PORT}:6767"
+    volumes:
+      - ./.data:/app/.data
+EOF
+  docker compose -f docker-compose.yml up -d --build
+  ufw allow OpenSSH >/dev/null 2>&1 || true
+  ufw allow "$PANEL_PORT/tcp" >/dev/null 2>&1 || true
+  ok "Panel Docker container built and started"
+  printf '\nPanel URL: http://%s:%s\n' "$(hostname -I | awk '{print $1}')" "$PANEL_PORT"
 }
 
 install_panel() {
@@ -212,8 +283,8 @@ configure_ssl() {
   domain="${SHIRONEX_DOMAIN:-}"
   email="${SHIRONEX_EMAIL:-}"
 
-  if [[ -z "$domain" ]]; then read -r -p "Panel domain (e.g. panel.example.com): " domain; fi
-  if [[ -z "$email" ]]; then read -r -p "ACME email: " email; fi
+  if [[ -z "$domain" ]]; then tty_read "Panel domain (e.g. panel.example.com): " domain; fi
+  if [[ -z "$email" ]]; then tty_read "ACME email: " email; fi
   [[ "$domain" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || fail "Invalid domain."
   [[ "$email" == *@*.* ]] || fail "Invalid email."
 
@@ -299,8 +370,7 @@ repair_all() {
 
 uninstall_all() {
   require_root
-  read -r -p "Remove ShiroNex application/services? Backups are preserved. [y/N] " answer
-  [[ "$answer" =~ ^[Yy]$ ]] || return 0
+  tty_confirm "Remove ShiroNex application/services? Backups are preserved. [y/N] " || return 0
 
   pm2 delete "$APP_NAME" >/dev/null 2>&1 || true
   pm2 save >/dev/null 2>&1 || true
@@ -327,28 +397,28 @@ menu() {
   banner
   cat <<'EOF'
 
-[1] Install ShiroNex Panel
-[2] Install ShiroNex Node
-[3] Install Panel + Node
-[4] Configure HTTPS / SSL
-[5] Update ShiroNex
-[6] Repair Installation
-[7] Backup
+[1] Install Panel — Native
+[2] Install Panel — Docker
+[3] Install Remote Node
+[4] Install Panel + Node
+[5] Configure HTTPS / SSL
+[6] Update ShiroNex
+[7] Repair Installation
 [8] Diagnostics
 [9] Uninstall
 [10] System Information
 [0] Exit
 EOF
   local option
-  read -r -p $'\nSelect an option: ' option
+  tty_read $'\nSelect an option: ' option
   case "$option" in
     1) install_panel ;;
-    2) install_node ;;
-    3) install_panel; install_node ;;
-    4) configure_ssl ;;
-    5) update_all ;;
-    6) repair_all ;;
-    7) backup ;;
+    2) install_panel_docker ;;
+    3) install_node ;;
+    4) install_panel; install_node ;;
+    5) configure_ssl ;;
+    6) update_all ;;
+    7) repair_all ;;
     8) diagnostics ;;
     9) uninstall_all ;;
     10) system_info ;;
@@ -361,6 +431,7 @@ main() {
   require_root
   case "${1:-menu}" in
     panel) install_panel ;;
+    docker) install_panel_docker ;;
     node) install_node ;;
     both) install_panel; install_node ;;
     ssl) configure_ssl ;;
@@ -372,11 +443,15 @@ main() {
     info|system-info) system_info ;;
     menu) menu ;;
     -h|--help)
-      echo "Usage: sudo bash install.sh [panel|node|both|ssl|update|repair|backup|diagnostics|uninstall|info]"
+      echo "Usage: sudo bash install.sh [panel|docker|node|both|ssl|update|repair|backup|diagnostics|uninstall|info]"
       ;;
     *) fail "Unknown action: $1" ;;
   esac
 }
+
+if [[ "${1:-menu}" == "menu" ]]; then
+  require_tty
+fi
 
 if [[ "$EUID" -eq 0 ]]; then
   mkdir -p "$(dirname "$LOG_FILE")"
