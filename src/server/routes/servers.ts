@@ -9,6 +9,20 @@ const upload = multer({ dest: path.join(process.cwd(), ".data/temp/") });
 
 router.use(requireAuth);
 
+const requireServerAccess = async (req: any, res: any, next: any) => {
+  const servers = await (await import("../services/db.js")).readJSON("servers.json") || [];
+  const server = servers.find((candidate: any) => candidate.id === req.params.id);
+  if (!server) return res.status(404).json({ error: "Server not found" });
+  const user = req.user;
+  if (user?.role !== "admin" && user?.role !== "owner" && server.owner !== user?.id) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  req.server = server;
+  next();
+};
+
+router.use("/:id", requireServerAccess);
+
 router.get("/", getServers);
 router.post("/", createServer);
 router.get("/:id", getServer);

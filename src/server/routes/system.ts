@@ -7,6 +7,7 @@ import util from "util";
 const execPromise = util.promisify(exec);
 import { readJSON, writeJSON } from "../services/db.js";
 import bcrypt from "bcryptjs";
+import { isStrongPassword } from "../services/security.js";
 
 const router = express.Router();
 
@@ -111,32 +112,40 @@ router.post("/users", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { username, password, role } = req.body;
-  if (!username || !password || !role) return res.status(400).json({ error: "Missing fields" });
+  const cleanUsername = typeof username === "string" ? username.trim() : "";
+  if (!cleanUsername || !password || !role) return res.status(400).json({ error: "Missing fields" });
+  if (!/^[A-Za-z0-9_.-]{3,32}$/.test(cleanUsername)) return res.status(400).json({ error: "Invalid username" });
+  if (!isStrongPassword(password)) return res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
+  if (role !== "user" && role !== "admin") return res.status(400).json({ error: "Only user or admin roles can be created here" });
 
   const users = await readJSON("users.json") || [];
-  if (users.find((u: any) => u.username === username)) return res.status(400).json({ error: "Username taken" });
+  if (users.find((u: any) => u.username && u.username.toLowerCase() === cleanUsername.toLowerCase())) return res.status(400).json({ error: "Username taken" });
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, 12);
   const newUserId = Date.now().toString();
   users.push({
     id: newUserId,
-    username,
+    username: cleanUsername,
     password: hashedPassword,
     role,
     createdAt: new Date().toISOString()
   });
 
   await writeJSON("users.json", users);
-  res.json({ success: true, id: newUserId, username, role });
+  res.json({ success: true, id: newUserId, username: cleanUsername, role });
 });
 
 router.delete("/users/:id", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   
-  let users = await readJSON("users.json") || [];
-  users = users.filter((u: any) => u.id !== req.params.id);
-  await writeJSON("users.json", users);
+  const users = await readJSON("users.json") || [];
+  const target = users.find((u: any) => u.id === req.params.id);
+  if (!target) return res.status(404).json({ error: "User not found" });
+  if (target.id === user.id) return res.status(400).json({ error: "You cannot delete your own account" });
+  if (target.role === "owner") return res.status(403).json({ error: "The Owner account cannot be deleted" });
+  const remainingUsers = users.filter((u: any) => u.id !== req.params.id);
+  await writeJSON("users.json", remainingUsers);
   res.json({ success: true });
 });
 
@@ -145,8 +154,8 @@ router.put("/users/:id/password", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters" });
+  if (!isStrongPassword(newPassword)) {
+    return res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
   }
   
   const users = await readJSON("users.json") || [];
@@ -157,12 +166,16 @@ router.put("/users/:id/password", async (req, res) => {
     return res.status(400).json({ error: "Cannot change password of default admin account." });
   }
 
+  if (users[targetIndex].role === "owner" && user.role !== "owner") {
+    return res.status(403).json({ error: "Only the Owner can change the Owner password" });
+  }
+
   if (users[targetIndex].googleId || !users[targetIndex].password) {
     return res.status(400).json({ error: "Cannot change password for Google authenticated accounts." });
   }
   
   const bcrypt = await import("bcryptjs");
-  const hashedPassword = await bcrypt.default.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.default.hash(newPassword, 12);
   users[targetIndex].password = hashedPassword;
   users[targetIndex].passwordVersion = (users[targetIndex].passwordVersion || 0) + 1;
   await writeJSON("users.json", users);
