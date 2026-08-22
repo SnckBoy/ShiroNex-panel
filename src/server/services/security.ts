@@ -37,6 +37,11 @@ export const decryptSecret = (value:string) => {
 export const hashSecret = (value:string) => crypto.createHash("sha256").update(value).digest("hex");
 export const randomSecret = (bytes=32) => crypto.randomBytes(bytes).toString("base64url");
 
+export const isStrongPassword = (password: unknown): password is string => {
+  if (typeof password !== "string" || password.length < 12 || password.length > 256) return false;
+  return /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+};
+
 export const audit = async (action:string, req:any, metadata:any={}) => {
   const logs = await readJSON("audit_logs.json") || [];
   logs.push({
