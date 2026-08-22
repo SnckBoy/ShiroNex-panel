@@ -39,7 +39,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
       }
     }).catch(() => {});
 
-    if (user?.role === "admin") {
+    if (user?.role === "admin" || user?.role === "owner") {
       axios.get("/api/auth/users").then(res => {
         setUsers(res.data);
       }).catch(() => {});
@@ -47,7 +47,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   }, [user, selectedType]);
 
   if (!server) return null;
-  const canManage = user?.role === "admin" || server.owner === user?.id;
+  const canManage = user?.role === "admin" || user?.role === "owner" || server.owner === user?.id;
 
   const handleDelete = async () => {
     try {

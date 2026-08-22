@@ -61,7 +61,7 @@ export default function AdminControls({
               value={password} 
               onChange={(e: any) => setPassword(e.target.value)} 
               type="password" 
-              placeholder="Password"
+              placeholder="Strong password (12+ chars)"
               className="bg-muted border border-border focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
             />
             <select 
@@ -99,7 +99,7 @@ export default function AdminControls({
                   <tr key={u.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-4 py-3 text-foreground font-medium flex items-center gap-2">
                       {u.username}
-                      {u.role === 'admin' && <Shield size={14} className="text-purple-400" />}
+                      {(u.role === 'admin' || u.role === 'owner') && <Shield size={14} className={u.role === 'owner' ? "text-amber-400" : "text-purple-400"} />}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground capitalize">{u.role}</td>
                     <td className="px-4 py-3 text-right">
@@ -107,7 +107,7 @@ export default function AdminControls({
                         <div className="flex items-center justify-end gap-2">
                           <input 
                             type="password" 
-                            placeholder="New Pass" 
+                            placeholder="New strong password"
                             value={adminUserNewPassword} 
                             onChange={(e: any) => setAdminUserNewPassword(e.target.value)}
                             className="bg-black/40 border border-border focus:border-indigo-500 rounded-lg px-2 py-1 text-xs w-28 text-foreground outline-none"
@@ -120,7 +120,7 @@ export default function AdminControls({
                           <button onClick={() => setEditingUserId(u.id)} className="p-1.5 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors" title="Change Password">
                             <Key size={16} />
                           </button>
-                          {u.username !== "admin" && (
+                          {u.username !== "admin" && u.role !== "owner" && u.id !== user?.id && (
                             <button onClick={() => { if(confirm("Are you sure you want to delete this user?")) deleteUser(u.id); }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete User">
                               <Trash2 size={16} />
                             </button>
