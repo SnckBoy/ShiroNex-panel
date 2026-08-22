@@ -8,6 +8,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "r
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Setup from "./pages/Setup";
 import Dashboard from "./pages/Dashboard";
 import ServerList from "./pages/ServerList";
 import CreateServer from "./pages/CreateServer";
@@ -27,8 +28,8 @@ import { SystemUpdateListener } from "./components/SystemUpdateListener";
 import { TutorialOverlay } from "./components/TutorialOverlay";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
-  if (loading) return (
+  const { user, loading, setupRequired } = useAuth();
+  if (loading || setupRequired === null) return (
     <div className="h-[100dvh] w-full flex items-center justify-center bg-transparent text-foreground">
       <motion.div
         animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}
@@ -37,8 +38,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       />
     </div>
   );
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to={setupRequired ? "/setup" : "/login"} replace />;
   return <Layout>{children}</Layout>;
+};
+
+const PublicAuthRoute = ({ children }: { children: React.ReactNode }) => {
+  const { setupRequired, loading } = useAuth();
+  if (loading || setupRequired === null) return <div className="min-h-screen grid place-items-center bg-background text-foreground">Loading...</div>;
+  if (setupRequired) return <Navigate to="/setup" replace />;
+  return <>{children}</>;
 };
 
 const AnimatedRoutes = () => {
@@ -54,8 +62,9 @@ const AnimatedRoutes = () => {
         className="h-full w-full flex flex-col"
       >
         <Routes location={location}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/setup" element={<Setup />} />
+          <Route path="/login" element={<PublicAuthRoute><Login /></PublicAuthRoute>} />
+          <Route path="/register" element={<PublicAuthRoute><Register /></PublicAuthRoute>} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/nodes" element={<ProtectedRoute><Nodes /></ProtectedRoute>} />
           <Route path="/allocations" element={<ProtectedRoute><Allocations /></ProtectedRoute>} />
@@ -85,7 +94,7 @@ const TutorialManager = () => {
       return;
     }
 
-    if (loading || !user || location.pathname === '/login') return;
+    if (loading || !user || location.pathname === '/login' || location.pathname === '/setup') return;
 
     const isDev = process.env.NODE_ENV === 'development';
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
