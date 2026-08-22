@@ -83,9 +83,14 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
         res.status(401).json({ error: "Session expired" });
         return;
       }
+      if (user.role !== "admin" && user.role !== "owner") {
+        res.status(403).json({ error: "Forbidden: Admin access only" });
+        return;
+      }
+      (req as any).user = { ...decoded, role: user.role, username: user.username };
+    } else {
+      (req as any).user = decoded;
     }
-    
-    (req as any).user = decoded;
     next();
   } catch (err) {
     res.status(401).json({ error: "Invalid token" });
@@ -160,9 +165,10 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
         res.status(401).json({ error: "Session expired" });
         return;
       }
+      (req as any).user = { ...decoded, role: user.role, username: user.username };
+    } else {
+      (req as any).user = decoded;
     }
-    
-    (req as any).user = decoded;
     next();
   } catch (err) {
     res.status(401).json({ error: "Invalid token" });
