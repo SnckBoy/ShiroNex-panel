@@ -13,11 +13,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [enableTutorial, setEnableTutorial] = useState<boolean>(true);
   const [enableLoginAnimation, setEnableLoginAnimation] = useState<boolean>(true);
   const [enableRegistration, setEnableRegistration] = useState<boolean>(true);
-  const [theme, setTheme] = useState<string>(() => localStorage.getItem("shironex-theme") || "midnight");
-  const [appearance, setAppearance] = useState<string>(() => localStorage.getItem("shironex-appearance") || "dark");
-  const [accent, setAccent] = useState<string>(() => localStorage.getItem("shironex-accent") || "purple");
-  const [backgroundEffect, setBackgroundEffect] = useState<string>(() => localStorage.getItem("shironex-background-effect") || "aurora");
-  const [reducedMotion, setReducedMotion] = useState<boolean>(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || localStorage.getItem("shironex-motion") === "off");
+  const [theme, setTheme] = useState<string>("dark");
   const [enableGoogleLogin, setEnableGoogleLogin] = useState<boolean>(false);
   const [firebaseApiKey, setFirebaseApiKey] = useState<string>("");
   const [firebaseAuthDomain, setFirebaseAuthDomain] = useState<string>("");
@@ -44,14 +40,13 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (res.data.firebaseStorageBucket !== undefined) setFirebaseStorageBucket(res.data.firebaseStorageBucket);
       if (res.data.firebaseMessagingSenderId !== undefined) setFirebaseMessagingSenderId(res.data.firebaseMessagingSenderId);
       if (res.data.firebaseAppId !== undefined) setFirebaseAppId(res.data.firebaseAppId);
-      if (res.data.theme !== undefined) setTheme(String(res.data.theme));
-      if (res.data.appearance !== undefined) setAppearance(String(res.data.appearance));
-      if (res.data.accent !== undefined) setAccent(String(res.data.accent));
-      if (res.data.backgroundEffect !== undefined) setBackgroundEffect(String(res.data.backgroundEffect));
-      if (res.data.reducedMotion !== undefined) setReducedMotion(Boolean(res.data.reducedMotion));
-    } catch (e) {
-      console.warn("Unable to load panel settings", e);
-    }
+      if (res.data.theme !== undefined) {
+        setTheme(res.data.theme);
+        document.documentElement.setAttribute("data-theme", "dark");
+      } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -74,23 +69,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   }, [panelName]);
   
   useEffect(() => {
-    const root = document.documentElement;
-    const systemDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
-    const resolvedAppearance = appearance === "system" ? (systemDark ? "dark" : "light") : appearance;
-    const preset = theme.toLowerCase().replace(/[^a-z0-9-]/g, "-") || "midnight";
-    const accents: Record<string, string> = { purple: "#a855f7", indigo: "#6366f1", blue: "#3b82f6", cyan: "#06b6d4", emerald: "#10b981", pink: "#ec4899", red: "#ef4444" };
-    root.setAttribute("data-theme", preset);
-    root.setAttribute("data-appearance", resolvedAppearance);
-    root.setAttribute("data-accent", accent);
-    root.setAttribute("data-background-effect", backgroundEffect);
-    root.style.setProperty("--accent-color", accents[accent] || accents.purple);
-    root.classList.toggle("reduce-motion", reducedMotion || resolvedAppearance === "reduce-motion");
-    localStorage.setItem("shironex-theme", theme);
-    localStorage.setItem("shironex-appearance", appearance);
-    localStorage.setItem("shironex-accent", accent);
-    localStorage.setItem("shironex-background-effect", backgroundEffect);
-    localStorage.setItem("shironex-motion", reducedMotion ? "off" : "on");
-  }, [theme, appearance, accent, backgroundEffect, reducedMotion]);
+    document.documentElement.setAttribute("data-theme", "dark");
+  }, [theme]);
 
   return (
     <SettingsContext.Provider value={{ 
@@ -102,7 +82,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       enableTutorial, setEnableTutorial,
       enableLoginAnimation, setEnableLoginAnimation,
       enableRegistration, setEnableRegistration,
-      theme, setTheme, appearance, setAppearance, accent, setAccent, backgroundEffect, setBackgroundEffect, reducedMotion, setReducedMotion,
+      theme, setTheme,
       enableGoogleLogin, setEnableGoogleLogin,
       firebaseApiKey, setFirebaseApiKey,
       firebaseAuthDomain, setFirebaseAuthDomain,
