@@ -10,7 +10,7 @@ On a fresh supported Ubuntu 22.04 or 24.04 VPS, run:
 curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash
 ```
 
-The installer opens a menu with panel, node, panel-plus-node, update, repair, uninstall, and system-information actions. Non-interactive modes are also available:
+The installer opens a menu with panel, node, panel-plus-node, update, repair, uninstall, and system-information actions. After the panel starts, a fresh installation redirects to `/setup` to create the first Owner account. Non-interactive modes are also available:
 
 ```bash
 sudo bash install.sh panel
@@ -23,7 +23,7 @@ sudo bash install.sh uninstall
 
 After installation, the management command is available as `sudo shironex`. Use `sudo shironex --help` for panel/node service controls, logs, updates, repairs, backups, and health information.
 
-For a panel-only VPS, select **Install ShiroNex Panel**. For a separate node-only VPS, select **Install ShiroNex Node** or use the node command generated in the panel under **Nodes → Create Node**. The **Panel + Node** option installs the panel first and then asks for node credentials; if credentials are not supplied, it prints the safe generated node-registration workflow instead of inventing credentials. It is designed so one panel can manage **many independent VPS nodes**, each running Docker containers locally.
+For a panel-only VPS, select **Install ShiroNex Panel**. For a separate node-only VPS, select **Install ShiroNex Node** or use the node command generated in the panel under **Nodes → Create Node**. On the first visit to a fresh panel, open `/setup` and create the Owner account with a unique username, email, and strong password. `/setup` closes permanently as soon as the first user is written; the panel then uses `/login`. There is no default password and passwords are never printed to installer logs. The **Panel + Node** option installs the panel first and then asks for node credentials; if credentials are not supplied, it prints the safe generated node-registration workflow instead of inventing credentials. It is designed so one panel can manage **many independent VPS nodes**, each running Docker containers locally.
 
 ## Architecture
 
@@ -156,7 +156,7 @@ sudo /opt/shironex-node/uninstall.sh
 - Temporary node setup tokens
 - Encrypted node secrets on the panel
 - Constant-time daemon credential comparison
-- Admin-only node management
+- Owner/admin-only node management
 - Docker access remains on the node daemon
 - Server paths are restricted to the configured server directory
 - Infrastructure actions can be audited
@@ -177,7 +177,7 @@ ShiroNex can manage Cloudflare DNS records and proxy state. Normal Cloudflare HT
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and set production secrets, especially:
+The installer creates `.env` and generates missing production secrets. If configuring manually, create `.env` and set production secrets, especially:
 
 ```text
 JWT_SECRET=
@@ -232,4 +232,4 @@ The Settings page now supports immediate theme presets, dark/light/system appear
 
 ## Source integration and CI
 
-The repository includes the production installer set (`install.sh`, `node-install.sh`, and `shironex`), the repository `.gitignore`, and a read-only GitHub Actions workflow at `.github/workflows/ci.yml`. CI runs panel dependency installation, TypeScript lint, production build, node-daemon dependency installation, node-daemon build, and shell syntax checks. The installer can bootstrap from the GitHub source tree and falls back to the published source archive during a source-tree migration.
+The repository includes the production installer set (`install.sh`, `node-install.sh`, and `shironex`), the repository `.gitignore`, and a GitHub Actions workflow at `.github/workflows/ci.yml`. CI runs panel dependency installation, TypeScript lint, production build, node-daemon dependency installation, node-daemon build, and shell syntax checks. The installer bootstraps from the real GitHub source tree and does not depend on a source archive.

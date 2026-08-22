@@ -2,7 +2,7 @@
 
 **Author:** Manus AI  
 **Applies to:** ShiroNex panel VPS and one or more Linux node VPSs  
-**Recommended operating system:** Ubuntu 22.04 or 24.04 LTS, 64-bit
+**Recommended operating system:** Ubuntu 22.04/24.04 LTS or Debian 11/12/13, 64-bit
 
 ## 1. What ShiroNex is
 
@@ -70,7 +70,7 @@ cd /root/shironex-upload/ShiroNex
 sudo bash install.sh
 ```
 
-The installer copies the project to `/opt/shironex-panel`, creates `.env` if it does not exist, generates `JWT_SECRET` and `NODE_ENCRYPTION_KEY` when missing, installs npm dependencies, builds the panel, and starts it with PM2 on port `6767` by default.
+The installer copies the project to `/opt/shironex-panel`, creates `.env` if it does not exist, generates `JWT_SECRET` and `NODE_ENCRYPTION_KEY` when missing, installs npm dependencies, builds the panel, and starts it with PM2 on port `6767` by default. It never creates or prints a default user password.
 
 Check the process:
 
@@ -82,7 +82,19 @@ curl -I http://127.0.0.1:6767
 
 For a temporary test, open `http://PANEL_IP:6767`. For production, put the panel behind HTTPS and use the resulting HTTPS origin when creating nodes.
 
-### 4.3 Configure production secrets
+### 4.3 Create the first ShiroNex Owner
+
+Open the panel in your browser at `http://PANEL_IP:6767` or through your HTTPS domain. A fresh installation with no users redirects to:
+
+```text
+https://panel.example.com/setup
+```
+
+Create the first account with a username, email, and password. The password must be at least 12 characters and contain uppercase, lowercase, numeric, and special characters. ShiroNex hashes the password with bcrypt and creates the account with the `Owner` role. The setup endpoint is one-time: after the first user is written, `/setup` redirects to `/login` and cannot create another account.
+
+After setup, sign in at `/login`. The Owner can manage users, nodes, servers, backups, settings, API keys, and system administration. Normal users can only access the resources assigned to them and cannot access Owner/admin endpoints.
+
+### 4.4 Configure production secrets
 
 Open the environment file:
 

@@ -42,7 +42,8 @@ if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.joi
 if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
 if (!fs.existsSync(path.join(DATA_DIR, "settings.json"))) fs.writeFileSync(path.join(DATA_DIR, "settings.json"), "{}");
 
-import { attachContainerSocket, getContainerLogs } from "./src/server/services/docker.js";
+import { attachContainerSocket, getContainerLogs, setSocketIO } from "./src/server/services/docker.js";
+setSocketIO(io);
 import { getJwtSecret } from "./src/server/services/security.js";
 
 io.use((socket, next) => {
