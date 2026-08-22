@@ -19,6 +19,11 @@ const remoteForServer=async(server:any)=>{
  return {id:n.id,baseUrl:`${n.tls===false?"http":"https"}://${n.fqdn||n.hostname}:${n.apiPort}`,credential:decryptSecret(n.credential)};
 };
 
+const canManageServer = (req: Request, server: any) => {
+  const user = (req as any).user;
+  return user?.role === "admin" || user?.role === "owner" || server?.owner === user?.id;
+};
+
 export const getServers = async (req: Request, res: Response) => {
   const user = (req as any).user;
   const servers = await readJSON("servers.json") || [];
@@ -239,6 +244,7 @@ export const startServer = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
     if (server.suspended) {
       return res.status(403).json({ error: "Server is suspended" });
     }
@@ -275,6 +281,7 @@ export const stopServer = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
     try {
       await stopContainer(server.containerId, server.nodeId);
     } catch (stopErr: any) {
@@ -300,6 +307,8 @@ export const restartServer = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
+    if (server.suspended) return res.status(403).json({ error: "Server is suspended" });
     try {
       const io = req.app.get("io");
       if (io) io.to(`server_${id}`).emit("clear_logs");
@@ -334,6 +343,8 @@ export const sendCommand = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
+    if (typeof command !== "string" || command.length === 0 || command.length > 4096) return res.status(400).json({ error: "Invalid command" });
     await sendContainerCommand(server.containerId, command, server.nodeId);
     res.json({ success: true });
   } catch (err: any) {
@@ -976,7 +987,7 @@ export const updateResources = async (req: Request, res: Response) => {
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server) return res.status(404).json({ error: "Server not found" });
-    if ((req as any).user.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Unauthorized" });
 
     server.ram = Number(ram);
     server.cpu = Number(cpu);
@@ -1003,7 +1014,7 @@ export const updateSuspend = async (req: Request, res: Response) => {
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server) return res.status(404).json({ error: "Server not found" });
-    if ((req as any).user.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Unauthorized" });
 
     server.suspended = suspendDuration !== null;
     server.suspendDuration = suspendDuration;

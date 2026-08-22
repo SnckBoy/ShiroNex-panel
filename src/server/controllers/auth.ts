@@ -1,10 +1,78 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { readJSON, writeJSON } from "../services/db.js";
-import { getJwtSecret } from "../services/security.js";
+import { getJwtSecret, isStrongPassword } from "../services/security.js";
 
 const JWT_SECRET = getJwtSecret();
+let ownerSetupInProgress = false;
+
+const isValidEmail = (email: unknown): email is string =>
+  typeof email === "string" && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const isValidUsername = (username: unknown): username is string =>
+  typeof username === "string" && /^[A-Za-z0-9_.-]{3,32}$/.test(username);
+
+export const setupStatus = async (_req: Request, res: Response) => {
+  const users = await readJSON("users.json") || [];
+  res.json({ setupRequired: !Array.isArray(users) || users.length === 0 });
+};
+
+export const setupOwner = async (req: Request, res: Response) => {
+  if (ownerSetupInProgress) {
+    res.status(409).json({ error: "Owner setup is already in progress" });
+    return;
+  }
+
+  ownerSetupInProgress = true;
+  try {
+    const users = await readJSON("users.json") || [];
+    if (!Array.isArray(users)) {
+      res.status(500).json({ error: "User database is invalid" });
+      return;
+    }
+    if (users.length > 0) {
+      res.status(409).json({ error: "Owner setup has already been completed" });
+      return;
+    }
+
+    const { username, email, password, confirmPassword } = req.body || {};
+    const cleanUsername = typeof username === "string" ? username.trim() : "";
+    const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+    if (!isValidUsername(cleanUsername)) {
+      res.status(400).json({ error: "Username must be 3-32 characters and contain only letters, numbers, dots, underscores, or hyphens" });
+      return;
+    }
+    if (!isValidEmail(cleanEmail)) {
+      res.status(400).json({ error: "A valid email address is required" });
+      return;
+    }
+    if (!isStrongPassword(password)) {
+      res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
+      return;
+    }
+    if (password !== confirmPassword) {
+      res.status(400).json({ error: "Passwords do not match" });
+      return;
+    }
+
+    const owner = {
+      id: `user-${crypto.randomUUID()}`,
+      username: cleanUsername,
+      email: cleanEmail,
+      password: await bcrypt.hash(password, 12),
+      role: "owner",
+      passwordVersion: 0,
+      createdAt: new Date().toISOString()
+    };
+    await writeJSON("users.json", [owner]);
+    res.status(201).json({ success: true, message: "Owner account created. Please sign in.", user: { id: owner.id, username: owner.username, email: owner.email, role: owner.role } });
+  } finally {
+    ownerSetupInProgress = false;
+  }
+};
 
 export const register = async (req: Request, res: Response) => {
   const settings = await readJSON("settings.json") || {};
@@ -26,8 +94,8 @@ export const register = async (req: Request, res: Response) => {
     return;
   }
 
-  if (password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
+  if (!isStrongPassword(password)) {
+    res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
     return;
   }
 
@@ -37,6 +105,10 @@ export const register = async (req: Request, res: Response) => {
   }
 
   const users = await readJSON("users.json") || [];
+  if (!Array.isArray(users) || users.length === 0) {
+    res.status(403).json({ error: "First-run setup is required. Create the Owner account at /setup.", setupRequired: true });
+    return;
+  }
   const existingUser = users.find((u: any) => u.username.toLowerCase() === cleanUsername.toLowerCase());
 
   if (existingUser) {
@@ -45,7 +117,7 @@ export const register = async (req: Request, res: Response) => {
   }
 
   const { writeJSON } = await import("../services/db.js");
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, 12);
   
   const newUser = {
     id: "user-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
@@ -72,6 +144,12 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
+  const users = await readJSON("users.json") || [];
+  if (!Array.isArray(users) || users.length === 0) {
+    res.status(403).json({ error: "First-run setup is required. Create the Owner account at /setup.", setupRequired: true });
+    return;
+  }
+
   // Dev auto-provisioning (creates a first admin account on empty installs) is only
   // ever active when explicitly opted into via DEV_AUTO_LOGIN=true, and only outside
   // production. It must NEVER be inferred from PORT, since that previously caused
@@ -81,17 +159,16 @@ export const login = async (req: Request, res: Response) => {
   const devAutoLoginEnabled = process.env.DEV_AUTO_LOGIN === "true" && process.env.NODE_ENV !== "production";
 
   if (devAutoLoginEnabled) {
-    const users = await readJSON("users.json") || [];
     let user = users.find((u: any) => u.username === username);
 
     if (!user) {
       const { writeJSON } = await import("../services/db.js");
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password, 12);
       user = {
         id: "dev-user-" + Math.random().toString(36).substr(2, 9),
         username,
         password: hashedPassword,
-        role: "admin",
+        role: "user",
         passwordVersion: 0
       };
       users.push(user);
@@ -106,7 +183,7 @@ export const login = async (req: Request, res: Response) => {
       }
     }
 
-    const role = user.role || "admin";
+    const role = user.role || "user";
     const token = jwt.sign(
       { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
       JWT_SECRET,
@@ -117,8 +194,6 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
-  const users = await readJSON("users.json") || [];
-  
   const user = users.find((u: any) => u.username === username);
 
   if (!user) {
@@ -133,7 +208,7 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
-  const role = user.role || "admin";
+  const role = user.role || "user";
   const token = jwt.sign({ id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 }, JWT_SECRET, { expiresIn: "7d" });
 
   res.json({ token, user: { id: user.id, username: user.username, role } });
@@ -260,12 +335,14 @@ export const googleLogin = async (req: Request, res: Response) => {
   const baseUsername = emailPrefix || "user";
 
   const users = await readJSON("users.json") || [];
+  if (!Array.isArray(users) || users.length === 0) {
+    res.status(403).json({ error: "First-run setup is required. Create the Owner account at /setup.", setupRequired: true });
+    return;
+  }
   let user = users.find((u: any) => (u.email && u.email.toLowerCase() === email.toLowerCase()) || (u.googleId && u.googleId === googleId) || (u.username && u.username.toLowerCase() === baseUsername.toLowerCase()));
 
   if (!user) {
-    // If no users exist yet in system at all, make this user an admin!
-    const isFirstUser = users.length === 0;
-    const role = isFirstUser ? "admin" : "user";
+    const role = "user";
 
     const { writeJSON } = await import("../services/db.js");
     user = {
@@ -292,7 +369,7 @@ export const googleLogin = async (req: Request, res: Response) => {
     }
   }
 
-  const role = user.role || "admin";
+  const role = user.role || "user";
   const token = jwt.sign(
     { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
     JWT_SECRET,
