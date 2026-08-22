@@ -24,6 +24,7 @@ export default function SettingsPage(): React.ReactElement {
     firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, 
     fetchSettings 
   } = useSettings();
+  const isAdmin = user?.role === "admin" || user?.role === "owner";
   
   const [users, setUsers] = useState<any[]>([]);
   const [username, setUsername] = useState("");
@@ -61,7 +62,7 @@ export default function SettingsPage(): React.ReactElement {
         updateUser({ username: res.data.username });
       }
       setUsernameMsg({ text: "Username updated successfully!", type: "success" });
-      if (user.role === "admin") {
+      if (isAdmin) {
         fetchUsers();
       }
     } catch (err: any) {
@@ -183,7 +184,7 @@ export default function SettingsPage(): React.ReactElement {
   };
 
   const fetchUsers = async () => {
-    if (user.role !== "admin") return;
+    if (!isAdmin) return;
     try {
       const res = await axios.get("/api/system/users");
       setUsers(res.data);
@@ -253,6 +254,10 @@ export default function SettingsPage(): React.ReactElement {
 
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      alert("Password must be 12-256 characters and include uppercase, lowercase, number, and special character");
+      return;
+    }
     setIsCreatingUser(true);
     try {
       await axios.post("/api/system/users", { username, password, role });
@@ -269,8 +274,8 @@ export default function SettingsPage(): React.ReactElement {
 
   const changeUserPassword = async (id: string) => {
     try {
-      if (adminUserNewPassword.length < 8) {
-         alert("Password must be at least 8 characters");
+      if (adminUserNewPassword.length < 12 || !/[a-z]/.test(adminUserNewPassword) || !/[A-Z]/.test(adminUserNewPassword) || !/\d/.test(adminUserNewPassword) || !/[^A-Za-z0-9]/.test(adminUserNewPassword)) {
+         alert("Password must be 12-256 characters and include uppercase, lowercase, number, and special character");
          return;
       }
       await axios.put(`/api/system/users/${id}/password`, { newPassword: adminUserNewPassword });
@@ -298,7 +303,7 @@ export default function SettingsPage(): React.ReactElement {
 
   const renderGoogleFirebase = () => (
     <>
-    {user.role === "admin" && (
+    {isAdmin && (
         isDevPort3000 ? (
           <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden mt-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 relative z-10 border-b border-border-subtle pb-6">
@@ -596,7 +601,7 @@ export default function SettingsPage(): React.ReactElement {
         </div>
       </div>
 
-      {user.role === "admin" && (
+      {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 relative z-10">
           
           {/* Branding & Identity */}
@@ -798,7 +803,7 @@ export default function SettingsPage(): React.ReactElement {
         <label className="mt-5 flex items-center gap-3 text-sm text-muted-foreground relative z-10"><input type="checkbox" checked={reducedMotion} onChange={async e => { setReducedMotion(e.target.checked); await axios.put("/api/system/settings", { reducedMotion: e.target.checked }); }} /> Reduce motion for accessibility and low-power devices</label>
       </div>
 
-      {user.role === "admin" && (
+      {isAdmin && (
         <div className="bg-card/80 backdrop-blur-xl border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden mt-8">
           <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
             <Layout className="mr-3 text-indigo-400 w-5 h-5" /> Custom Dashboard Background
@@ -980,11 +985,11 @@ export default function SettingsPage(): React.ReactElement {
         />
       )}
 
-      {user.role === "admin" && (
+      {isAdmin && (
         <AdminControls user={user} users={users} username={username} setUsername={setUsername} password={password} setPassword={setPassword} role={role} setRole={setRole} isCreatingUser={isCreatingUser} createUser={createUser} editingUserId={editingUserId} setEditingUserId={setEditingUserId} adminUserNewPassword={adminUserNewPassword} setAdminUserNewPassword={setAdminUserNewPassword} changeUserPassword={changeUserPassword} deleteUser={deleteUser} />
       )}
 
-      {user.role === "admin" && (
+      {isAdmin && (
         <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl mt-8">
           <h2 className="text-xl font-bold mb-4 flex items-center text-foreground">
             <RefreshCw className="mr-3 text-emerald-400 w-5 h-5" /> System Update
