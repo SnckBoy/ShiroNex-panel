@@ -155,8 +155,17 @@ configure_panel() {
     cp -a "$SOURCE_DIR"/. "$APP_DIR/"
   fi
   cd "$APP_DIR"
-  [[ -f .env ]] || cp .env.example .env
-  chmod 600 .env
+  if [[ ! -f "$APP_DIR/.env" ]]; then
+    if [[ -f "$SOURCE_DIR/.env.example" ]]; then
+      cp "$SOURCE_DIR/.env.example" "$APP_DIR/.env"
+    else
+      : > "$APP_DIR/.env"
+      warn "No .env.example found; creating a secure production environment file."
+    fi
+  else
+    info "Existing $APP_DIR/.env found; preserving it."
+  fi
+  chmod 600 "$APP_DIR/.env"
 
   set_env() {
     local key="$1" value="$2"
@@ -194,8 +203,17 @@ install_panel_docker() {
   install -d -m 750 "$APP_DIR"
   cp -a "$SOURCE_DIR"/. "$APP_DIR/"
   cd "$APP_DIR"
-  [[ -f .env ]] || cp .env.example .env
-  chmod 600 .env
+  if [[ ! -f "$APP_DIR/.env" ]]; then
+    if [[ -f "$SOURCE_DIR/.env.example" ]]; then
+      cp "$SOURCE_DIR/.env.example" "$APP_DIR/.env"
+    else
+      : > "$APP_DIR/.env"
+      warn "No .env.example found; creating a secure production environment file."
+    fi
+  else
+    info "Existing $APP_DIR/.env found; preserving it."
+  fi
+  chmod 600 "$APP_DIR/.env"
   set_env() {
     local key="$1" value="$2"
     if grep -q "^${key}=" .env; then
