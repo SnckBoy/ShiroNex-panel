@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
 export const AuthContext = createContext<any>(null);
@@ -7,22 +7,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("shironex_token"));
   const [loading, setLoading] = useState(true);
+  const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
+
+  const refreshSetupStatus = useCallback(async () => {
+    try {
+      const response = await axios.get("/api/auth/setup-status");
+      setSetupRequired(response.data.setupRequired === true);
+      return response.data.setupRequired === true;
+    } catch {
+      setSetupRequired(false);
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      axios.get("/api/auth/me").then(res => {
-        setUser(res.data.user);
-        setLoading(false);
-      }).catch(() => {
-        setToken(null);
-        localStorage.removeItem("shironex_token");
-        setUser(null);
-        setLoading(false);
-      });
-    } else {
+    void refreshSetupStatus();
+
+    if (!token) {
       setLoading(false);
+      return;
     }
+
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    axios.get("/api/auth/me").then((response) => {
+      setUser(response.data.user);
+      setLoading(false);
+    }).catch(() => {
+      setToken(null);
+      localStorage.removeItem("shironex_token");
+      delete axios.defaults.headers.common["Authorization"];
+      setUser(null);
+      setLoading(false);
+    });
   }, [token]);
 
   useEffect(() => {
@@ -41,10 +57,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => axios.interceptors.response.eject(interceptor);
   }, []);
 
-  const login = (token: string, user: any) => {
-    setToken(token);
-    setUser(user);
-    localStorage.setItem("shironex_token", token);
+  const login = (newToken: string, newUser: any) => {
+    setToken(newToken);
+    setUser(newUser);
+    setSetupRequired(false);
+    localStorage.setItem("shironex_token", newToken);
+    axios.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
   };
 
   const logout = () => {
@@ -54,21 +72,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     delete axios.defaults.headers.common["Authorization"];
   };
 
+  const markSetupComplete = () => setSetupRequired(false);
+
   const refreshUser = async () => {
     try {
-      const res = await axios.get("/api/auth/me");
-      setUser(res.data.user);
-    } catch (e) {
-      // ignore
+      const response = await axios.get("/api/auth/me");
+      setUser(response.data.user);
+    } catch {
+      // The response interceptor handles expired sessions.
     }
   };
 
   const updateUser = (updatedFields: any) => {
-    setUser((prev: any) => (prev ? { ...prev, ...updatedFields } : prev));
+    setUser((previous: any) => (previous ? { ...previous, ...updatedFields } : previous));
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, refreshUser, updateUser }}>
+    <AuthContext.Provider value={{
+      user,
+      token,
+      login,
+      logout,
+      loading,
+      setupRequired,
+      refreshSetupStatus,
+      markSetupComplete,
+      refreshUser,
+      updateUser,
+    }}>
       {children}
     </AuthContext.Provider>
   );
