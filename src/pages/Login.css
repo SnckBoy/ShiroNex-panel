@@ -165,8 +165,11 @@
 .google-button { display: flex; align-items: center; justify-content: center; gap: .75rem; width: 100%; min-height: 3.25rem; border-radius: .85rem; font: inherit; font-weight: 700; cursor: pointer; transition: transform .16s cubic-bezier(.23,1,.32,1), box-shadow .18s ease, background-color .18s ease, border-color .18s ease; }
 .login-button:active,
 .google-button:active { transform: scale(.98); }
-.login-button { margin-top: .5rem; color: #08111f; border: 0; background: linear-gradient(100deg, #e0e7ff 0%, #c4b5fd 45%, #a5f3fc 100%); box-shadow: 0 12px 26px rgba(99,102,241,.24); }
+.login-button { position: relative; z-index: 2; margin-top: .5rem; color: #08111f; border: 0; background: linear-gradient(100deg, #e0e7ff 0%, #c4b5fd 45%, #a5f3fc 100%); box-shadow: 0 12px 26px rgba(99,102,241,.24); touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .login-button:hover { box-shadow: 0 16px 34px rgba(34,211,238,.2); transform: translateY(-1px); }
+.login-button:focus-visible { outline: 3px solid rgba(165,243,252,.75); outline-offset: 3px; }
+.login-button:disabled { pointer-events: none; }
+.login-button span { pointer-events: none; }
 .login-button:disabled,
 .google-button:disabled { opacity: .6; cursor: not-allowed; transform: none; }
 .login-button-arrow { margin-left: auto; padding-right: 1rem; font-size: 1.25rem; }
@@ -200,9 +203,10 @@
 }
 
 @media (max-width: 480px) {
-  .login-shell { padding: .75rem; }
+  .login-shell { padding: .75rem; min-height: 100svh; }
   .login-card { padding: 1.4rem; border-radius: 1.25rem; }
   .login-mobile-mark { display: grid; }
+  .login-button { min-height: 3.5rem; font-size: 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

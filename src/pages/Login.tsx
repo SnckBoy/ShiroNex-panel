@@ -4,7 +4,6 @@ import axios from "axios";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { Link, useNavigate } from "react-router-dom";
-import { LoadingOverlay } from "../components/LoadingOverlay";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import "./Login.css";
@@ -43,14 +42,29 @@ export default function Login() {
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password) {
+      setError("Enter your username and password to continue.");
+      return;
+    }
     setIsLoading(true);
     setError("");
     try {
-      const response = await axios.post("/api/auth/login", { username, password });
+      const response = await axios.post(
+        "/api/auth/login",
+        { username: cleanUsername, password },
+        { timeout: 15000 }
+      );
+      if (!response.data?.token || !response.data?.user) {
+        throw new Error("The server returned an incomplete login response.");
+      }
       login(response.data.token, response.data.user);
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.error || "Login failed. Check your username and password.");
+      const message = err.code === "ECONNABORTED"
+        ? "The panel took too long to respond. Check that the panel service is running."
+        : err.response?.data?.error || err.message || "Login failed. Check your username and password.";
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -140,7 +154,7 @@ export default function Login() {
 
           {error && <div className="login-error" role="alert">{error}</div>}
 
-          <form onSubmit={handleLogin} className="login-form">
+          <form onSubmit={handleLogin} className="login-form" noValidate aria-busy={isLoading}>
             <label className="login-field">
               <span>Username</span>
               <div className="login-input-wrap">
@@ -181,7 +195,8 @@ export default function Login() {
               </div>
             </label>
 
-            <button type="submit" className="login-button" disabled={isLoading}>
+            <button type="submit" className="login-button" disabled={isLoading} aria-disabled={isLoading}>
+
               <span>{isLoading ? "Signing in…" : "Sign in"}</span>
               <span className="login-button-arrow">→</span>
             </button>
@@ -204,7 +219,6 @@ export default function Login() {
         </section>
       </div>
 
-      {isLoading && <LoadingOverlay message="Signing in…" />}
     </main>
   );
 }
