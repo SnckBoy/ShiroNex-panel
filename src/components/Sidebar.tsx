@@ -27,9 +27,9 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
   links.push({ name: "Settings", path: "/settings", icon: <Settings size={20} /> });
 
   return (
-    <div className={`h-full flex flex-col bg-card/75 backdrop-blur-2xl border-r border-border-subtle transition-all duration-300 shironex-aurora z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+    <div className={`snx-app-sidebar h-full flex flex-col transition-all duration-300 shironex-aurora z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       {/* Header */}
-      <div className={`h-16 flex items-center border-b border-border-subtle ${isCollapsed ? 'justify-center' : 'px-6'} flex-shrink-0 relative`}>
+      <div className={`snx-app-sidebar-header h-16 flex items-center ${isCollapsed ? 'justify-center' : 'px-6'} flex-shrink-0 relative`}>
         {onClose && (
           <button onClick={onClose} className="md:hidden flex items-center justify-center absolute top-5 right-4 p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
@@ -57,7 +57,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
       </div>
       
       {/* Navigation */}
-      <nav className="flex-1 w-full px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+      <nav className="snx-app-nav flex-1 w-full px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar">
         {!isCollapsed && <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menu</p>}
         {links.map(link => {
           const isActive = location.pathname === link.path || (link.path !== '/' && location.pathname.startsWith(link.path));
@@ -67,12 +67,12 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
               to={link.path} 
               onClick={onClose}
               title={isCollapsed ? link.name : undefined}
-              className={`relative flex items-center ${isCollapsed ? 'justify-center' : 'px-3'} py-2.5 rounded-lg transition-colors group overflow-hidden`}
+              className={`snx-app-nav-link relative flex items-center ${isCollapsed ? 'justify-center' : 'px-3'} py-2.5 rounded-lg transition-colors group overflow-hidden`}
             >
               {isActive && (
                 <motion.div 
                   layoutId="activeTabSidebar" 
-                  className="absolute inset-0 bg-muted rounded-lg" 
+                  className="snx-app-nav-active absolute inset-0 rounded-lg"
                   initial={false} 
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
@@ -94,7 +94,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
       </nav>
       
       {/* User Profile */}
-      <div className="w-full p-4 border-t border-border-subtle mt-auto bg-transparent">
+      <div className="snx-app-sidebar-footer w-full p-4 mt-auto bg-transparent">
         {isCollapsed ? (
           <button onClick={logout} title="Logout" className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-colors">
             <LogOut size={20} />
