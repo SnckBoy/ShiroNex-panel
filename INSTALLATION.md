@@ -2,7 +2,7 @@
 
 **Author:** Manus AI  
 **Applies to:** ShiroNex panel VPS and one or more Linux node VPSs  
-**Recommended operating system:** Ubuntu 22.04/24.04 LTS or Debian 11/12/13, 64-bit
+**Supported operating system:** Ubuntu 20.04 or newer, or Debian 11/12/13, 64-bit (`amd64` or `arm64`). Ubuntu 22.04 and 24.04 are the primary CI-tested releases; other Ubuntu releases use compatibility fallbacks.
 
 ## 1. What ShiroNex is
 
@@ -29,7 +29,7 @@ The included setup flow has these practical capabilities: one-time node setup to
 
 ## 3. Requirements and network layout
 
-Use a domain name for the panel, for example `panel.example.com`. A node may use a domain such as `node-de-1.example.com`. HTTPS is strongly recommended, especially when panel and node traffic crosses the public Internet. Docker’s official Ubuntu guidance lists Ubuntu 22.04 and 24.04 LTS among supported releases and warns that published Docker container ports can bypass ordinary UFW rules, so firewall design must account for Docker networking.[1]
+Use Ubuntu 20.04 or newer for the panel and node VPSs. Ubuntu releases older than 20.04 are intentionally rejected because their system libraries are too old for the current Node.js 22 production runtime; upgrade those VPSs before installing. Ubuntu 22.04 and 24.04 are the primary CI-tested releases, while other Ubuntu releases use generic package fallbacks. Use a domain name for the panel, for example `panel.example.com`. A node may use a domain such as `node-de-1.example.com`. HTTPS is strongly recommended, especially when panel and node traffic crosses the public Internet. Docker’s official Ubuntu guidance lists Ubuntu 22.04 and 24.04 LTS among supported releases and warns that published Docker container ports can bypass ordinary UFW rules, so firewall design must account for Docker networking.[1]
 
 | Host | Suggested open inbound ports | Notes |
 |---|---:|---|
@@ -51,7 +51,7 @@ apt-get upgrade -y
 apt-get install -y ca-certificates curl unzip openssl git build-essential
 ```
 
-The repository’s installer installs Node.js 22 when Node.js is missing or older than version 20. npm’s official guidance recommends using a Node version manager when possible and identifies NodeSource as the recommended installer path on Linux.[2]
+The repository’s installer installs Node.js 22 when Node.js is missing or older than version 20. It first uses NodeSource and falls back to the official Node.js binary when the detected Ubuntu codename has no NodeSource package. Docker installation likewise prefers Docker’s upstream repository and falls back to the Ubuntu/Debian distribution package when necessary. The installer supports `amd64` and `arm64` and prints a direct diagnostic if the OS is below Ubuntu 20.04. npm’s official guidance recommends using a Node version manager when possible and identifies NodeSource as the recommended installer path on Linux.[2]
 
 ### 4.2 Upload and extract the project
 

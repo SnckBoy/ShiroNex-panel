@@ -62,10 +62,15 @@ check_os() {
   . /etc/os-release
   case "$ID" in
     ubuntu)
-      case "${VERSION_ID:-}" in
-        22.04|24.04) ;;
-        *) fail "Supported Ubuntu versions: 22.04 and 24.04. Detected: ${VERSION_ID:-unknown}" ;;
-      esac
+      [[ -n "${VERSION_ID:-}" ]] || fail "Ubuntu version could not be detected."
+      # Node.js 22 and the current ShiroNex dependency tree require glibc 2.28+;
+      # Ubuntu 20.04 is the oldest release that can run this production stack.
+      if dpkg --compare-versions "$VERSION_ID" lt "20.04"; then
+        fail "This ShiroNex release requires Ubuntu 20.04 or newer. Detected: Ubuntu $VERSION_ID. Upgrade the VPS to Ubuntu 20.04+ and run the installer again."
+      fi
+      if [[ "$VERSION_ID" != "22.04" && "$VERSION_ID" != "24.04" ]]; then
+        warn "Ubuntu $VERSION_ID is not one of the primary CI-tested releases; continuing with the generic Ubuntu compatibility path."
+      fi
       ;;
     debian)
       case "${VERSION_ID:-}" in
@@ -73,7 +78,7 @@ check_os() {
         *) fail "Supported Debian versions: 11, 12, and 13. Detected: ${VERSION_ID:-unknown}" ;;
       esac
       ;;
-    *) fail "Supported OS: Ubuntu 22.04/24.04 or Debian 11/12/13. Detected: $ID" ;;
+    *) fail "Supported OS: Ubuntu 20.04+ or Debian 11/12/13. Detected: $ID" ;;
   esac
   case "$(dpkg --print-architecture)" in
     amd64|arm64) ;;
@@ -87,10 +92,27 @@ check_network() {
 
 install_base_dependencies() {
   apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl git openssl build-essential
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl git openssl build-essential xz-utils
   if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+    if ! (curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs); then
+      warn "NodeSource does not publish packages for this Ubuntu release; installing the official Node.js binary instead."
+      local node_arch node_version node_root
+      case "$(dpkg --print-architecture)" in
+        amd64) node_arch="x64" ;;
+        arm64) node_arch="arm64" ;;
+        *) fail "No official Node.js binary is available for architecture: $(dpkg --print-architecture)" ;;
+      esac
+      node_version="22.14.0"
+      node_root="/opt/nodejs/node-v${node_version}-linux-${node_arch}"
+      rm -rf "$node_root"
+      curl -fsSL "https://nodejs.org/dist/v${node_version}/node-v${node_version}-linux-${node_arch}.tar.xz" -o /tmp/shironex-node.tar.xz
+      install -d -m 755 /opt/nodejs
+      tar -xJf /tmp/shironex-node.tar.xz -C /opt/nodejs
+      ln -sfn "$node_root/bin/node" /usr/local/bin/node
+      ln -sfn "$node_root/bin/npm" /usr/local/bin/npm
+      ln -sfn "$node_root/bin/npx" /usr/local/bin/npx
+      rm -f /tmp/shironex-node.tar.xz
+    fi
   fi
   command -v node >/dev/null && command -v npm >/dev/null || fail "Node.js/npm installation failed."
 }
@@ -103,11 +125,12 @@ install_docker() {
     return
   fi
 
+  local docker_ready=false
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
-  . /etc/os-release
-  cat >/etc/apt/sources.list.d/docker.sources <<EOF
+  if curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc; then
+    chmod a+r /etc/apt/keyrings/docker.asc
+    . /etc/os-release
+    cat >/etc/apt/sources.list.d/docker.sources <<EOF
 Types: deb
 URIs: https://download.docker.com/linux/${ID}
 Suites: ${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}
@@ -115,8 +138,24 @@ Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    if apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+      docker_ready=true
+    else
+      warn "Docker’s upstream repository has no package for this OS codename; using the distribution Docker package."
+    fi
+  else
+    warn "Could not reach Docker’s upstream repository; using the distribution Docker package."
+  fi
+  if [[ "$docker_ready" != true ]]; then
+    rm -f /etc/apt/sources.list.d/docker.sources
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin 2>/dev/null || \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2 2>/dev/null || \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose 2>/dev/null || true
+    fi
+  fi
   if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
   docker info >/dev/null 2>&1 || fail "Docker installation failed."
   ok "Docker installed"
@@ -252,7 +291,13 @@ services:
     volumes:
       - ./.data:/app/.data
 EOF
-  docker compose -f docker-compose.yml up -d --build
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f docker-compose.yml up -d --build
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose -f docker-compose.yml up -d --build
+  else
+    fail "Docker is installed, but no Compose command is available. Install docker-compose-plugin or docker-compose and retry."
+  fi
   ufw allow OpenSSH >/dev/null 2>&1 || true
   ufw allow "$PANEL_PORT/tcp" >/dev/null 2>&1 || true
   ok "Panel Docker container built and started"

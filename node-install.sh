@@ -32,9 +32,23 @@ require_root(){ [[ "$EUID" -eq 0 ]] || fail "Run with sudo/root."; }
 check_os(){
   [[ -r /etc/os-release ]] || fail "Cannot detect operating system."
   . /etc/os-release
-  case "$ID:${VERSION_ID:-}" in
-    ubuntu:22.04|ubuntu:24.04|debian:11|debian:12|debian:13) ;;
-    *) fail "Supported OS: Ubuntu 22.04/24.04 or Debian 11/12/13. Detected: ${PRETTY_NAME:-$ID}" ;;
+  case "$ID" in
+    ubuntu)
+      [[ -n "${VERSION_ID:-}" ]] || fail "Ubuntu version could not be detected."
+      if dpkg --compare-versions "$VERSION_ID" lt "20.04"; then
+        fail "This ShiroNex node requires Ubuntu 20.04 or newer. Detected: Ubuntu $VERSION_ID. Upgrade the VPS to Ubuntu 20.04+ and run the installer again."
+      fi
+      if [[ "$VERSION_ID" != "22.04" && "$VERSION_ID" != "24.04" ]]; then
+        printf '\033[1;33m[WARN]\033[0m Ubuntu %s is not one of the primary CI-tested releases; continuing with the generic Ubuntu compatibility path.\n' "$VERSION_ID"
+      fi
+      ;;
+    debian)
+      case "${VERSION_ID:-}" in
+        11|12|13) ;;
+        *) fail "Supported Debian versions: 11, 12, and 13. Detected: ${PRETTY_NAME:-$ID}" ;;
+      esac
+      ;;
+    *) fail "Supported OS: Ubuntu 20.04+ or Debian 11/12/13. Detected: ${PRETTY_NAME:-$ID}" ;;
   esac
 }
 
@@ -56,19 +70,37 @@ check_os
 [[ "$NODE_PORT" =~ ^[0-9]+$ && "$NODE_PORT" -ge 1024 && "$NODE_PORT" -le 65535 ]] || fail "Invalid node port."
 
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl openssl git build-essential
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl openssl git build-essential xz-utils
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]]; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+  if ! (curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs); then
+    printf '\033[1;33m[WARN]\033[0m NodeSource does not publish packages for this Ubuntu release; installing the official Node.js binary instead.\n'
+    NODE_ARCH=""
+    case "$(dpkg --print-architecture)" in
+      amd64) NODE_ARCH="x64" ;;
+      arm64) NODE_ARCH="arm64" ;;
+      *) fail "No official Node.js binary is available for architecture: $(dpkg --print-architecture)" ;;
+    esac
+    NODE_VERSION="22.14.0"
+    NODE_ROOT="/opt/nodejs/node-v${NODE_VERSION}-linux-${NODE_ARCH}"
+    rm -rf "$NODE_ROOT"
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -o /tmp/shironex-node.tar.xz
+    install -d -m 755 /opt/nodejs
+    tar -xJf /tmp/shironex-node.tar.xz -C /opt/nodejs
+    ln -sfn "$NODE_ROOT/bin/node" /usr/local/bin/node
+    ln -sfn "$NODE_ROOT/bin/npm" /usr/local/bin/npm
+    ln -sfn "$NODE_ROOT/bin/npx" /usr/local/bin/npx
+    rm -f /tmp/shironex-node.tar.xz
+  fi
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
+  DOCKER_READY=false
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
-  . /etc/os-release
-  cat >/etc/apt/sources.list.d/docker.sources <<EOF
+  if curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc; then
+    chmod a+r /etc/apt/keyrings/docker.asc
+    . /etc/os-release
+    cat >/etc/apt/sources.list.d/docker.sources <<EOF
 Types: deb
 URIs: https://download.docker.com/linux/${ID}
 Suites: ${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}
@@ -76,8 +108,18 @@ Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    if apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+      DOCKER_READY=true
+    else
+      printf '\033[1;33m[WARN]\033[0m Docker’s upstream repository has no package for this OS codename; using the distribution Docker package.\n'
+    fi
+  fi
+  if [[ "$DOCKER_READY" != true ]]; then
+    rm -f /etc/apt/sources.list.d/docker.sources
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2 2>/dev/null || true
+  fi
 fi
 if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
 docker info >/dev/null 2>&1 || fail "Docker is not ready."

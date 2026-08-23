@@ -4,7 +4,7 @@ ShiroNex is a self-hosted game-server control panel with a distributed Linux nod
 
 ## One-command Ubuntu installer
 
-On a fresh supported Ubuntu 22.04 or 24.04 VPS, run:
+On a fresh Ubuntu 20.04 or newer VPS, run. Ubuntu 22.04 and 24.04 are the primary CI-tested releases; other Ubuntu releases use the installer’s generic compatibility fallbacks:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash
@@ -64,7 +64,7 @@ ShiroNex's daemon is an independent implementation. It does not copy proprietary
 sudo bash install.sh
 ```
 
-The installer installs Node.js when needed, installs dependencies, creates `.env` secrets when missing, builds ShiroNex, and starts it with PM2 on port `6767`.
+The installer detects Ubuntu by distribution rather than requiring one exact release. It supports Ubuntu 20.04 and newer on `amd64` or `arm64`, installs Node.js 22 through NodeSource when available, and falls back to the official Node.js binary when a release codename has no NodeSource package. Docker similarly falls back to the Ubuntu/Debian distribution package when Docker’s upstream repository does not publish the detected codename. It installs dependencies, creates `.env` secrets when missing, builds ShiroNex, and starts it with PM2 on port `6767`. Ubuntu versions older than 20.04 are intentionally rejected because their system libraries are too old for the current Node.js 22 production runtime; upgrade the VPS rather than bypassing this check.
 
 Open:
 
@@ -84,7 +84,7 @@ For production, put ShiroNex behind HTTPS using your preferred reverse proxy and
 6. ShiroNex displays a **temporary setup command**.
 7. Copy that command and run it as root on the separate Ubuntu/Debian node VPS.
 
-The command is conceptually:
+The command is conceptually. The node bootstrap supports Ubuntu 20.04+ on `amd64` or `arm64`; it applies the same Node.js and Docker fallbacks as the panel installer:
 
 ```bash
 curl -fsSL https://YOUR-SHIRONEX-DOMAIN/node.sh | bash -s -- \
