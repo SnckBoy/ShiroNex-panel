@@ -151,7 +151,7 @@ export default function Dashboard() {
   }, [search, servers]);
 
   return (
-    <div className="min-h-screen bg-transparent text-slate-200 font-sans selection:bg-violet-500/30 overflow-x-hidden">
+    <div className="min-h-screen bg-transparent text-foreground font-sans selection:bg-violet-500/30 overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-600/10 rounded-full blur-[120px]" />
@@ -159,30 +159,30 @@ export default function Dashboard() {
 
       <div className="relative z-10 max-w-7xl mx-auto p-4 md:p-8 space-y-8">
         
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/5">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border-subtle">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-500/20">
               <Server className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">{panelName || 'Panel Control'}</h1>
-              <p className="text-sm text-slate-400">Global Infrastructure Overview</p>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">{panelName || 'Panel Control'}</h1>
+              <p className="text-sm text-muted-foreground">Global Infrastructure Overview</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             
             
-            <div className="hidden sm:flex p-1 bg-transparent border border-white/5 rounded-xl">
+            <div className="hidden sm:flex p-1 bg-transparent border border-border-subtle rounded-xl">
               <button 
                 onClick={() => setView('grid')}
-                className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
               <button 
                 onClick={() => setView('list')}
-                className={`p-2 rounded-lg transition-all ${view === 'list' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`p-2 rounded-lg transition-all ${view === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 <List className="h-4 w-4" />
               </button>
@@ -197,14 +197,14 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="bg-transparent backdrop-blur-none border border-white/5 rounded-2xl p-5 flex flex-col justify-between overflow-hidden relative group hover:border-white/10 transition-colors"
+              className="bg-card/70 backdrop-blur-xl border border-border-subtle rounded-2xl p-5 flex flex-col justify-between overflow-hidden relative group hover:border-white/10 transition-colors"
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <p className="text-sm font-medium text-slate-400 mb-1">{stat.label}</p>
-                  <h3 className="text-2xl font-bold text-white">{stat.value}</h3>
+                  <h3 className="text-2xl font-bold text-foreground">{stat.value}</h3>
                 </div>
-                <div className="p-2 bg-white/5 rounded-lg">
+                <div className="p-2 bg-muted rounded-lg">
                   <Activity className="h-5 w-5" style={{ color: stat.color }} />
                 </div>
               </div>
@@ -217,10 +217,10 @@ export default function Dashboard() {
 
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Server className="h-5 w-5 text-violet-400" />
               Deployed Instances
-              <span className="px-2 py-0.5 rounded-md bg-white/5 text-xs text-slate-400 font-normal ml-2">
+              <span className="px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground font-normal ml-2">
                 {filteredServers.length}
               </span>
             </h2>
@@ -249,7 +249,7 @@ export default function Dashboard() {
             {filteredServers.length === 0 && (
               <motion.div 
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 border border-dashed border-white/10 rounded-2xl"
+                className="col-span-full py-20 flex flex-col items-center justify-center text-muted-foreground border border-dashed border-border-subtle rounded-2xl"
               >
                 <Search className="h-10 w-10 mb-4 opacity-50" />
                 <p>No instances match your search parameters.</p>
@@ -274,37 +274,37 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-transparent backdrop-blur-none border border-white/5 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-6 hover:bg-[#16161a] transition-colors"
+        className="bg-card/70 backdrop-blur-xl border border-border-subtle rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-6 hover:bg-muted transition-colors"
       >
         <div className="flex items-center gap-4 min-w-[200px] flex-shrink-0">
           <StatusPill status={server.status} />
           <div>
-            <h3 className="font-semibold text-slate-100 truncate w-40">{server.name}</h3>
-            <p className="text-xs text-slate-500 font-mono">{server.id}</p>
+            <h3 className="font-semibold text-foreground truncate w-40">{server.name}</h3>
+            <p className="text-xs text-muted-foreground font-mono">{server.id}</p>
           </div>
         </div>
 
         <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
-            <p className="text-slate-500 text-xs mb-1">IP Address</p>
-            <p className="font-mono text-slate-300">{server.ip}</p>
+            <p className="text-muted-foreground text-xs mb-1">IP Address</p>
+            <p className="font-mono text-foreground-muted">{server.ip}</p>
           </div>
           <div>
-            <p className="text-slate-500 text-xs mb-1">Type</p>
-            <p className="text-slate-300 truncate">{server.type}</p>
+            <p className="text-muted-foreground text-xs mb-1">Type</p>
+            <p className="text-foreground-muted truncate">{server.type}</p>
           </div>
           <div className="col-span-2 md:col-span-2 flex gap-4">
             <div className="flex-1">
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-slate-500">CPU</span>
-                <span className="text-slate-300">{server.cpu}%</span>
+                <span className="text-muted-foreground">CPU</span>
+                <span className="text-foreground-muted">{server.cpu}%</span>
               </div>
               <ProgressBar value={server.cpu} colorClass={cpuColor} />
             </div>
             <div className="flex-1">
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-slate-500">RAM</span>
-                <span className="text-slate-300">{(server.ram.used/1024).toFixed(1)}/{(server.ram.total/1024).toFixed(1)}G</span>
+                <span className="text-muted-foreground">RAM</span>
+                <span className="text-foreground-muted">{(server.ram.used/1024).toFixed(1)}/{(server.ram.total/1024).toFixed(1)}G</span>
               </div>
               <ProgressBar value={(server.ram.used/server.ram.total)*100} colorClass={ramColor} />
             </div>
@@ -315,7 +315,7 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
           <ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} />
           <button 
             onClick={onOpenTerminal}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+            className="p-2 rounded-lg bg-muted hover:bg-muted-hover text-muted-foreground hover:text-foreground transition-colors"
             title="Open Console"
           >
             <Terminal className="h-4 w-4" />
@@ -331,14 +331,14 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="bg-transparent backdrop-blur-none border border-white/5 rounded-2xl p-5 flex flex-col group hover:border-violet-500/30 transition-all hover:shadow-2xl hover:shadow-violet-500/5 relative overflow-hidden"
+      className="bg-card/70 backdrop-blur-xl border border-border-subtle rounded-2xl p-5 flex flex-col group hover:border-violet-500/30 transition-all hover:shadow-2xl hover:shadow-violet-500/5 relative overflow-hidden"
     >
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500/0 via-violet-500/20 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
 
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="font-semibold text-lg text-slate-100 mb-1">{server.name}</h3>
-          <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+          <h3 className="font-semibold text-lg text-foreground mb-1">{server.name}</h3>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
             <span>{server.id}</span>
             <span>•</span>
             <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> {server.ip}</span>
@@ -347,7 +347,7 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
         <StatusPill status={server.status} />
       </div>
 
-      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 bg-white/5 rounded-lg p-2 px-3 w-max border border-white/5">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6 bg-white/5 rounded-lg p-2 px-3 w-max border border-white/5">
         <Shield className="h-4 w-4 text-violet-400" />
         {server.type}
       </div>
@@ -370,15 +370,15 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+      <div className="flex items-center justify-between pt-4 border-t border-border-subtle mt-auto">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5" /> Uptime: {server.uptime}
         </div>
         
         <div className="flex items-center gap-2">
           <ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} />
           
-          <div className="w-px h-6 bg-white/10 mx-1" />
+          <div className="w-px h-6 bg-border mx-1" />
           
           <button 
             onClick={onOpenTerminal}
@@ -402,7 +402,7 @@ const ActionButtons = ({ status, isBusy, onAction }: any) => {
           <button 
             onClick={() => onAction('restart')} 
             disabled={isBusy}
-            className="p-2 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
+            className="p-2 rounded-lg bg-muted hover:bg-cyan-500/20 text-muted-foreground hover:text-cyan-300 transition-colors disabled:opacity-50"
             title="Restart"
           >
             <RotateCw className={`h-4 w-4 ${isBusy ? 'animate-spin' : ''}`} />
@@ -410,7 +410,7 @@ const ActionButtons = ({ status, isBusy, onAction }: any) => {
           <button 
             onClick={() => onAction('stop')} 
             disabled={isBusy}
-            className="p-2 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
+            className="p-2 rounded-lg bg-muted hover:bg-rose-500/20 text-muted-foreground hover:text-rose-300 transition-colors disabled:opacity-50"
             title="Stop"
           >
             <Square className="h-4 w-4" fill="currentColor" />
