@@ -14,10 +14,11 @@ import ServerProperties from "../components/ServerProperties";
 import ServerBackups from "../components/ServerBackups";
 import PluginManager from "../components/PluginManager";
 import ModManager from "../components/ModManager";
+import ModpackManager from "../components/ModpackManager";
 import SubUsersManager from "../components/SubUsersManager";
 import ServerSFTP from "../components/ServerSFTP";
 import PlayitTunnel from "./PlayitTunnel";
-import { Puzzle, Box, Network } from "lucide-react";
+import { Puzzle, Box, Network, PackageOpen } from "lucide-react";
 import { Settings, Globe } from "lucide-react";
 import { useSettings } from "../context/SettingsContext";
 
@@ -123,10 +124,12 @@ export default function ServerView() {
     tabs.push({ name: "Plugins", path: `/servers/${id}/plugins`, exactPath: "plugins", icon: <Puzzle size={18} /> });
   }
 
-  if (server?.type === "FORGE" || server?.type === "FABRIC") {
+    if (server?.type === "FORGE" || server?.type === "FABRIC") {
     tabs.push({ name: "Mods", path: `/servers/${id}/mods`, exactPath: "mods", icon: <Box size={18} /> });
   }
-
+  if (!isProxy) {
+    tabs.push({ name: "Modpacks", path: `/servers/${id}/modpacks`, exactPath: "modpacks", icon: <PackageOpen size={18} /> });
+  }
   tabs.push(
     { name: "Settings", path: `/servers/${id}/settings`, exactPath: "settings", icon: <Settings size={18} /> },
     { name: "Backup", path: `/servers/${id}/backup`, exactPath: "backup", icon: <Archive size={18} /> }
@@ -322,6 +325,7 @@ export default function ServerView() {
              <Route path="/backup" element={<ServerBackups serverId={id!} />} />
              <Route path="/plugins" element={<PluginManager serverId={id!} />} />
              <Route path="/mods" element={<ModManager serverId={id!} />} />
+             <Route path="/modpacks" element={<ModpackManager serverId={id!} />} />
              {enablePlayit && <Route path="/playit" element={<PlayitTunnel serverId={id!} />} />}
            </Routes>
         </div>
