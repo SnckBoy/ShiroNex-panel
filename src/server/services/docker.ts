@@ -359,53 +359,64 @@ export const getContainerStats = async (containerId: string, nodeId?: string) =>
   if (remote) return await nodeControl.statsServer(remote, containerId);
   const docker = await getDocker(nodeId);
   if (isSandbox) {
-    const id = containerId.replace("mock-container-id-", "");
-    if (!mockState[id]) return { cpu: 0, ram: 0, disk: 0 };
-    
-    // Stable pseudo-random mock stats based on time so it fluctuates realistically
-    const timeSec = Math.floor(Date.now() / 5000);
-    const floatPseudo = (Math.sin(timeSec + id.charCodeAt(0)) + 1) / 2; // 0 to 1
-    
     return {
-      cpu: floatPseudo * 10 + 2, // 2% to 12%
-      ram: 600 + (floatPseudo * 50 - 25), // ~600 MB
-      disk: 2.1
+      available: false,
+      timestamp: Date.now(),
+      cpu: null,
+      ram: null,
+      disk: null,
+      networkRxBytes: null,
+      networkTxBytes: null,
     };
   }
   try {
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
     if (!info.State.Running) {
-      return { cpu: 0, ram: 0, disk: 0 };
+      return { available: true, timestamp: Date.now(), cpu: 0, ram: 0, disk: null, networkRxBytes: 0, networkTxBytes: 0 };
     }
-    const statsResult = await container.stats({ stream: false });
-    
-    let cpuPercent = 0.0;
+    const statsResult: any = await container.stats({ stream: false });
+
+    let cpuPercent: number | null = null;
     try {
       const cpuDelta = statsResult.cpu_stats.cpu_usage.total_usage - statsResult.precpu_stats.cpu_usage.total_usage;
       const systemDelta = statsResult.cpu_stats.system_cpu_usage - statsResult.precpu_stats.system_cpu_usage;
-      if (systemDelta > 0.0 && cpuDelta > 0.0) {
+      if (systemDelta > 0.0 && cpuDelta >= 0.0) {
         const cpus = statsResult.cpu_stats.online_cpus || statsResult.cpu_stats.cpu_usage.percpu_usage?.length || 1;
         cpuPercent = (cpuDelta / systemDelta) * cpus * 100.0;
       }
-    } catch(e) {}
+    } catch {}
 
-    let ramMB = 0.0;
+    let ramMB: number | null = null;
     try {
-      const stats = statsResult.memory_stats.stats as any || {};
-      const cache = stats.cache || stats.inactive_file || stats.total_inactive_file || 0;
-      const usedMemory = statsResult.memory_stats.usage - cache;
-      ramMB = usedMemory / 1024 / 1024;
-    } catch(e) {}
+      const memoryStats = statsResult.memory_stats.stats || {};
+      const cache = memoryStats.cache || memoryStats.inactive_file || memoryStats.total_inactive_file || 0;
+      const usedMemory = Number(statsResult.memory_stats.usage) - Number(cache);
+      if (Number.isFinite(usedMemory) && usedMemory >= 0) ramMB = usedMemory / 1024 / 1024;
+    } catch {}
 
-    // Roughly calculate disk size from the volume directory if possible, or provide a default for now.
+    let networkRxBytes = 0;
+    let networkTxBytes = 0;
+    let networkAvailable = false;
+    try {
+      for (const network of Object.values(statsResult.networks || {}) as any[]) {
+        networkRxBytes += Number(network.rx_bytes) || 0;
+        networkTxBytes += Number(network.tx_bytes) || 0;
+        networkAvailable = true;
+      }
+    } catch {}
+
     return {
+      available: true,
+      timestamp: Date.now(),
       cpu: cpuPercent,
       ram: ramMB,
-      disk: 2.1
+      disk: null,
+      networkRxBytes: networkAvailable ? networkRxBytes : null,
+      networkTxBytes: networkAvailable ? networkTxBytes : null,
     };
   } catch (e) {
-    return { cpu: 0, ram: 0, disk: 0 };
+    return { available: false, timestamp: Date.now(), cpu: null, ram: null, disk: null, networkRxBytes: null, networkTxBytes: null };
   }
 };
 
