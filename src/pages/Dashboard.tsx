@@ -54,7 +54,7 @@ const ProgressBar = ({ value, max = 100, colorClass = "bg-violet-500" }: any) =>
   const percentage = Math.min(100, Math.max(0, (value / max) * 100));
   
   return (
-    <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden">
+    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
       <motion.div 
         initial={{ width: 0 }}
         animate={{ width: `${percentage}%` }}
@@ -151,8 +151,8 @@ export default function Dashboard() {
   }, [search, servers]);
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground font-sans selection:bg-violet-500/30 overflow-x-hidden">
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+    <div className="dashboard-shell min-h-screen bg-transparent text-foreground font-sans selection:bg-violet-500/30 overflow-x-hidden">
+      <div className="dashboard-ambient fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-600/10 rounded-full blur-[120px]" />
       </div>
@@ -197,7 +197,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="bg-card/70 backdrop-blur-xl border border-border-subtle rounded-2xl p-5 flex flex-col justify-between overflow-hidden relative group hover:border-white/10 transition-colors"
+              className="dashboard-stat-card qx-stat-card bg-card/70 backdrop-blur-xl border border-border-subtle rounded-2xl p-5 flex flex-col justify-between overflow-hidden relative group hover:border-white/10 transition-colors"
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
@@ -274,7 +274,7 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-card/70 backdrop-blur-xl border border-border-subtle rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-6 hover:bg-muted transition-colors"
+        className="dashboard-server-card bg-card/70 backdrop-blur-xl border border-border-subtle rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-6 hover:bg-muted transition-colors"
       >
         <div className="flex items-center gap-4 min-w-[200px] flex-shrink-0">
           <StatusPill status={server.status} />
@@ -331,7 +331,7 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="bg-card/70 backdrop-blur-xl border border-border-subtle rounded-2xl p-5 flex flex-col group hover:border-violet-500/30 transition-all hover:shadow-2xl hover:shadow-violet-500/5 relative overflow-hidden"
+        className="dashboard-server-card bg-card/70 backdrop-blur-xl border border-border-subtle rounded-2xl p-5 flex flex-col group hover:border-violet-500/30 transition-all hover:shadow-2xl hover:shadow-violet-500/5 relative overflow-hidden"
     >
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500/0 via-violet-500/20 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
 
