@@ -236,3 +236,22 @@ html.reduce-motion .login-orb,
 html.reduce-motion .login-stars { animation: none !important; }
 html.reduce-motion .login-brand,
 html.reduce-motion .login-card { animation: none !important; }
+
+
+/* Core Space integration: the auth form remains the foreground owner while the global environment stays visible behind it. */
+.login-shell { background: transparent; }
+.login-wallpaper {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(124, 106, 240, .18), transparent 32%),
+    radial-gradient(circle at 85% 14%, rgba(77, 232, 240, .12), transparent 28%),
+    linear-gradient(135deg, rgba(8, 7, 16, .42), rgba(16, 13, 31, .32), rgba(6, 21, 28, .42));
+}
+.login-card { border-color: rgba(124, 106, 240, .3); background: linear-gradient(145deg, rgba(21, 19, 31, .82), rgba(8, 7, 16, .64)); }
+.login-button:disabled { position: relative; overflow: hidden; background: linear-gradient(100deg, #9b8ff5, #7c6af0, #4de8f0); color: #fff; }
+.login-button:disabled::before { content: ''; width: .55rem; height: .55rem; border-radius: 50%; background: #4de8f0; box-shadow: 0 0 .75rem #4de8f0; animation: login-core-pulse 1s ease-in-out infinite; }
+.login-button:disabled .login-button-arrow { opacity: .5; }
+@keyframes login-core-pulse { 0%, 100% { transform: scale(.7); opacity: .6; } 50% { transform: scale(1.2); opacity: 1; } }
+html[data-appearance="light"] .login-shell { background: transparent; }
+html[data-appearance="light"] .login-wallpaper { background: linear-gradient(135deg, rgba(242, 240, 248, .34), rgba(224, 242, 254, .28), rgba(253, 242, 248, .32)); }
+@media (prefers-reduced-motion: reduce) { .login-button:disabled::before { animation: none; } }
+html.reduce-motion .login-button:disabled::before { animation: none; }

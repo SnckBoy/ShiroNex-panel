@@ -306,3 +306,190 @@ html[data-appearance="light"] .snx-console-surface, html[data-appearance="light"
   .snx-status-pulse, .snx-pulse-ring__progress { animation: none !important; }
   .snx-metric-card:hover, .snx-server-card:hover, .snx-server-row:hover, .snx-execute-button:hover { transform: none !important; }
 }
+
+
+/* Core Space ambient layer: presentation-only, non-interactive, and safe behind real DOM controls. */
+.core-space {
+  position: absolute;
+  inset: 0;
+  z-index: -4;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: 900px;
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(77, 232, 240, .09), transparent 32%),
+    radial-gradient(ellipse at 22% 14%, rgba(124, 106, 240, .14), transparent 35%),
+    linear-gradient(180deg, rgba(11, 10, 20, .1), rgba(11, 10, 20, .52));
+}
+
+.core-space__fog,
+.core-space__floor,
+.core-space__particles,
+.core-space__echo {
+  position: absolute;
+  inset: 0;
+}
+
+.core-space__fog {
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(77, 232, 240, .08), transparent 23%),
+    radial-gradient(ellipse at 74% 70%, rgba(124, 106, 240, .08), transparent 28%),
+    linear-gradient(180deg, transparent 44%, rgba(8, 7, 16, .65) 100%);
+  filter: blur(12px);
+  opacity: .82;
+}
+
+.core-space__floor {
+  z-index: 1;
+  inset: auto -15% -25% -15%;
+  height: 58%;
+  transform: rotateX(62deg);
+  transform-origin: 50% 100%;
+  opacity: .28;
+  background-image:
+    linear-gradient(rgba(77, 232, 240, .17) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 106, 240, .14) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to top, black, transparent 82%);
+}
+
+.core-space__particles {
+  z-index: 2;
+  opacity: .58;
+  background-image:
+    radial-gradient(circle at 19% 24%, rgba(77, 232, 240, .7) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 41%, rgba(124, 106, 240, .7) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 44% 73%, rgba(255, 255, 255, .42) 0 1px, transparent 1.5px);
+  background-size: 173px 197px, 251px 223px, 311px 287px;
+  animation: core-space-drift 28s linear infinite;
+}
+
+.core-space__echo {
+  z-index: 3;
+  left: 50%;
+  top: 45%;
+  width: 14rem;
+  height: 14rem;
+  inset: auto;
+  transform: translate(-50%, -50%) rotateX(13deg) rotateY(-18deg);
+  transform-style: preserve-3d;
+  animation: core-space-orbit 24s linear infinite;
+  opacity: .56;
+}
+
+.core-space__block {
+  position: absolute;
+  width: 3.8rem;
+  height: 3.8rem;
+  border: 1px solid rgba(255,255,255,.24);
+  border-radius: .55rem;
+  box-shadow: inset 0 1px rgba(255,255,255,.3), inset 0 -.8rem rgba(0,0,0,.18), 0 0 2.5rem color-mix(in srgb, var(--core-block-color), transparent 48%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--core-block-color), white 18%), var(--core-block-color));
+}
+
+.core-space__block--one { --core-block-color: #3ddc84; left: 1.1rem; top: 5.2rem; transform: translateZ(1.3rem) rotateZ(-8deg); }
+.core-space__block--two { --core-block-color: #7c6af0; left: 5.3rem; top: 2.2rem; transform: translateZ(-.6rem) rotateZ(6deg); }
+.core-space__block--three { --core-block-color: #f5a623; left: 8.4rem; top: 6.8rem; transform: translateZ(2.1rem) rotateZ(11deg); }
+
+@keyframes core-space-drift { to { background-position: 77px 91px, -102px 124px, 143px -117px; } }
+@keyframes core-space-orbit { 0%, 100% { transform: translate(-50%, -50%) rotateX(13deg) rotateY(-18deg) rotateZ(-2deg); } 50% { transform: translate(-50%, -50%) rotateX(16deg) rotateY(18deg) rotateZ(2deg); } }
+
+html[data-appearance="light"] .core-space {
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(77, 145, 217, .08), transparent 32%),
+    radial-gradient(ellipse at 22% 14%, rgba(124, 106, 240, .08), transparent 35%),
+    linear-gradient(180deg, rgba(242, 240, 248, .05), rgba(242, 240, 248, .55));
+}
+html[data-appearance="light"] .core-space__floor { opacity: .16; }
+html[data-appearance="light"] .core-space__fog { opacity: .34; }
+
+@media (max-width: 640px) {
+  .core-space__echo { transform: translate(-50%, -50%) scale(.72) rotateX(13deg) rotateY(-18deg); }
+  .core-space__floor { background-size: 30px 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .core-space__particles,
+  .core-space__echo { animation: none !important; }
+  .core-space__echo { opacity: .32; transform: translate(-50%, -50%) scale(.78); }
+}
+html.reduce-motion .core-space__particles,
+html.reduce-motion .core-space__echo { animation: none !important; }
+html.reduce-motion .core-space__echo { opacity: .28; }
+
+
+/* Route framing: the backdrop moves; every real control remains in the DOM above it. */
+.core-space__echo {
+  transition: left .42s var(--snx-ease), top .42s var(--snx-ease), opacity .42s var(--snx-ease), scale .42s var(--snx-ease);
+}
+.global-live-wallpaper.core-view-dashboard .core-space__echo { left: 50%; top: 43%; scale: 1.18; opacity: .42; }
+.global-live-wallpaper.core-view-server .core-space__echo { left: 82%; top: 34%; scale: .78; opacity: .25; }
+.global-live-wallpaper.core-view-auth .core-space__echo { left: 80%; top: 28%; scale: .52; opacity: .18; }
+.global-live-wallpaper.core-view-console .core-space__echo { left: 82%; top: 18%; scale: .42; opacity: .1; }
+.global-live-wallpaper.core-view-servers .core-space__echo { left: 84%; top: 22%; scale: .5; opacity: .14; }
+.global-live-wallpaper.core-view-quiet .core-space__echo { left: 92%; top: 20%; scale: .38; opacity: .08; }
+
+.global-live-wallpaper.core-view-console .core-space__fog,
+.global-live-wallpaper.core-view-servers .core-space__fog { opacity: .48; }
+.global-live-wallpaper.core-view-console .core-space__particles,
+.global-live-wallpaper.core-view-servers .core-space__particles { opacity: .26; }
+
+/* Keep the standard shell translucent so the shared space is visible without reducing text contrast. */
+.snx-app-shell { background: linear-gradient(135deg, rgba(11,10,20,.86), rgba(11,10,20,.64)) !important; }
+.snx-server-layout { background: linear-gradient(135deg, rgba(11,10,20,.76), rgba(11,10,20,.62)) !important; }
+html[data-appearance="light"] .snx-app-shell { background: linear-gradient(135deg, rgba(242,240,248,.88), rgba(242,240,248,.68)) !important; }
+html[data-appearance="light"] .snx-server-layout { background: linear-gradient(135deg, rgba(242,240,248,.84), rgba(242,240,248,.66)) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .core-space__echo { transition: none; }
+}
+html.reduce-motion .core-space__echo { transition: none; }
+
+/* Live Console: quiet glass IDE surface with strong hierarchy and keyboard-safe controls. */
+.snx-console-window {
+  border: 1px solid rgba(124, 106, 240, .28) !important;
+  background: linear-gradient(150deg, rgba(18, 17, 29, .92), rgba(8, 8, 14, .84)) !important;
+  box-shadow: 0 24px 70px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.06) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.snx-console-window-bar {
+  min-height: 3rem;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+}
+.snx-console-title { color: var(--snx-text) !important; }
+.qx-console-body {
+  background: radial-gradient(circle at 82% 12%, rgba(77,232,240,.04), transparent 26%), rgba(4,5,10,.42);
+  scrollbar-color: rgba(124,106,240,.5) transparent;
+}
+.snx-quick-command-bar { border-top: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.02); }
+.snx-command-bar { border-top: 1px solid rgba(255,255,255,.08); background: rgba(9,9,16,.82); }
+.snx-command-input { border: 1px solid rgba(124,106,240,.24); background: rgba(11,12,20,.72); box-shadow: inset 0 1px rgba(255,255,255,.035); }
+.snx-command-input:focus-within { border-color: rgba(77,232,240,.62); box-shadow: 0 0 0 3px rgba(77,232,240,.08), 0 0 24px rgba(77,232,240,.08); }
+
+/* Fleet cards: status is the color cue; the surface stays calm and information-dense. */
+.snx-server-card, .snx-server-row {
+  border-color: rgba(124,106,240,.22) !important;
+  background: linear-gradient(145deg, rgba(22,20,34,.82), rgba(11,11,19,.72)) !important;
+  box-shadow: 0 18px 44px rgba(0,0,0,.2), inset 0 1px rgba(255,255,255,.045) !important;
+}
+.snx-server-card:hover, .snx-server-row:hover { border-color: rgba(77,232,240,.48) !important; box-shadow: 0 22px 52px rgba(0,0,0,.28), 0 0 28px rgba(77,232,240,.07) !important; transform: translateY(-2px); transition: transform .22s var(--snx-ease), border-color .22s ease, box-shadow .22s ease; }
+.snx-server-card:focus-within, .snx-server-row:focus-within { border-color: rgba(77,232,240,.62) !important; box-shadow: 0 0 0 3px rgba(77,232,240,.08); }
+html[data-appearance="light"] .snx-server-card, html[data-appearance="light"] .snx-server-row { background: linear-gradient(145deg, rgba(255,255,255,.78), rgba(241,245,249,.72)) !important; }
+
+@media (max-width: 720px) {
+  .snx-dashboard-inner { padding-left: .8rem; padding-right: .8rem; }
+  .snx-dashboard-header { align-items: stretch; flex-direction: column; gap: .85rem; }
+  .snx-dashboard-tools, .snx-search-field { width: 100%; min-width: 0; }
+  .snx-server-card-footer { align-items: flex-start; flex-direction: column; }
+  .snx-server-actions { width: 100%; justify-content: flex-start; }
+  .snx-server-row { grid-template-columns: 1fr; gap: .8rem; }
+  .snx-server-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snx-server-card:hover, .snx-server-row:hover { transform: none; transition: none; }
+}
+html.reduce-motion .snx-server-card:hover, html.reduce-motion .snx-server-row:hover { transform: none; transition: none; }

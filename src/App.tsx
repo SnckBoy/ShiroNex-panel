@@ -134,8 +134,8 @@ export default function App() {
     <SettingsProvider>
       <AuthProvider>
         <SystemUpdateListener />
-        <GlobalBackground />
         <Router>
+          <GlobalBackground />
           <AnimatedRoutes />
           <TutorialManager />
         </Router>
