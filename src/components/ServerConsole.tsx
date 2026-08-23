@@ -403,7 +403,7 @@ function DriveBar({ pct }: { pct: number }) {
 
 function ConnPill({ live }: { live: boolean }) {
   return (
-    <span className="flex items-center gap-2 px-3 py-1 rounded-sm border border-border-subtle bg-muted">
+    <span className="snx-connection-badge flex items-center gap-2 px-3 py-1 rounded-sm">
       <span className="relative flex h-2 w-2">
         {live && (
           <span
@@ -766,9 +766,9 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   );
 
   const renderTelemetryPanel = () => (
-    <section className="qx-panel rounded-[24px] relative overflow-hidden">
+    <section className="qx-panel snx-console-surface snx-telemetry-panel rounded-[24px] relative overflow-hidden">
       {/* header */}
-      <div className="flex items-center justify-between px-4 pt-3.5 pb-1">
+      <div className="snx-panel-heading flex items-center justify-between px-4 pt-3.5 pb-1">
         <h2 className="qx-display text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
           Telemetry & Usages
         </h2>
@@ -849,12 +849,12 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
 
   const renderPlayerSection = () => (
     <section
-      className={`flex-1 xl:min-h-0 qx-panel rounded-[24px] relative overflow-hidden flex flex-col ${
+      className={`flex-1 xl:min-h-0 qx-panel snx-console-surface snx-player-panel rounded-[24px] relative overflow-hidden flex flex-col ${
         ready ? "qx-enter" : "opacity-0"
       }`}
       style={{ animationDelay: "300ms" }}
     >
-      <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" />
+      <div className="snx-panel-accent-line absolute top-0 inset-x-0 h-[1px]" />
       <span className="absolute top-2.5 right-3 z-10 qx-mono text-[9px] px-2 py-0.5 rounded-sm bg-emerald-400/10 text-emerald-300 border border-emerald-400/20 tabular-nums">
         {players.length} online
       </span>
@@ -870,11 +870,11 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
         <div className="relative flex flex-col xl:flex-row w-full max-w-[1440px] mx-auto min-h-full gap-3 md:gap-5 p-3 md:p-6 pb-20 md:pb-10">
           
           {/* ═══════════ MOBILE VIEW SWITCHER (ONLY CONSOLE & PLAYERS) ═══════════ */}
-          <div className="flex xl:hidden items-center justify-between p-1 rounded-2xl bg-black/60 border border-white/10 backdrop-blur-md shrink-0">
+          <div className="snx-console-tabs flex xl:hidden items-center justify-between p-1 rounded-2xl shrink-0">
             <button
               type="button"
               onClick={() => setMobileTab("console")}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+              className={`snx-console-tab flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                 mobileTab === "console"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
                   : "text-slate-400 hover:text-slate-200"
@@ -886,7 +886,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
             <button
               type="button"
               onClick={() => setMobileTab("players")}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+              className={`snx-console-tab flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                 mobileTab === "players"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
                   : "text-slate-400 hover:text-slate-200"
@@ -915,7 +915,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
           {/* ═══════════ MAIN CONSOLE AREA (CONSOLE + TELEMETRY ON MOBILE SCROLL) ═══════════ */}
           <div className={`flex-1 flex-col gap-4 order-1 xl:order-2 ${mobileTab === "console" ? "flex" : "hidden xl:flex"}`}>
             <section
-              className={`flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
+              className={`snx-console-window flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
                 ready ? "qx-enter-right" : "opacity-0"
               } ${isFloating ? "qx-console-floating fixed z-[60] w-[min(92vw,980px)]" : ""} ${isMinimized ? "qx-console-minimized" : ""}`}
               style={{
@@ -925,7 +925,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               }}
             >
               {/* ── Header ── */}
-              <header className="qx-window-drag-handle px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-border-subtle relative z-10 cursor-default select-none" onPointerDown={startDrag}>
+              <header className="snx-console-window-bar qx-window-drag-handle px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 relative z-10 cursor-default select-none" onPointerDown={startDrag}>
                 <div className="flex items-center gap-[7px] shrink-0">
                   {["bg-[#ff5f57]", "bg-[#febc2e]", "bg-[#28c840]"].map((c, i) => (
                     <span
@@ -935,7 +935,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                   ))}
                 </div>
 
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="snx-console-title flex items-center gap-2 min-w-0">
                   <XTerm size={13} className="text-emerald-400/80 shrink-0" />
                   <div className="min-w-0 text-center">
                     <h1 className="qx-display text-[10px] sm:text-[11px] font-bold tracking-[0.2em] sm:tracking-[0.3em] text-slate-200 uppercase truncate">
@@ -1035,7 +1035,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               )}
 
               {/* ── Quick commands ── */}
-              <div className="qx-console-quick px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10 border-t border-border-subtle bg-black/20 backdrop-blur-md">
+              <div className="snx-quick-command-bar qx-console-quick px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10">
                 <span className="qx-display text-[8px] font-bold uppercase tracking-[0.22em] text-slate-500 shrink-0 mr-0.5 hidden xs:inline">
                   Quick
                 </span>
@@ -1064,9 +1064,9 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               {/* ── Command bar ── */}
               <form
                 onSubmit={send}
-                className="qx-console-command p-2 sm:p-3 md:p-4 flex gap-2 relative z-10 bg-black/40 backdrop-blur-md border-t border-border-subtle"
+                className="snx-command-bar qx-console-command p-2 sm:p-3 md:p-4 flex gap-2 relative z-10"
               >
-                <div className="qx-input-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 border border-border bg-muted/80 transition-all duration-300 min-w-0">
+                <div className="snx-command-input qx-input-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 transition-all duration-300 min-w-0">
                   <span className="text-emerald-400/80 qx-mono text-xs mr-1.5 sm:mr-3 select-none font-semibold whitespace-nowrap shrink-0">
                     <span className="hidden sm:inline">admin@node:~$</span>
                     <span className="sm:hidden">&gt;</span>
@@ -1093,7 +1093,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                 <button
                   type="submit"
                   disabled={!command.trim()}
-                  className="qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200 bg-emerald-400/[0.12] border border-emerald-400/30 rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
+                  className="snx-execute-button qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
                 >
                   Execute
                 </button>
