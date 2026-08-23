@@ -88,7 +88,7 @@ export default function ServerView() {
 
   if (server.suspended) return (
     <div className="h-full flex items-center justify-center p-8">
-      <div className="max-w-md w-full rounded-2xl border border-red-500/20 bg-black/40 dark:bg-black/40 backdrop-blur-md p-8 text-center flex flex-col items-center">
+      <div className="snx-suspended-card max-w-md w-full rounded-2xl p-8 text-center flex flex-col items-center">
         <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 mb-4">
           <Lock className="w-8 h-8 text-red-400" />
         </div>
@@ -98,7 +98,7 @@ export default function ServerView() {
         </p>
         <Link 
           to="/servers" 
-          className="inline-flex items-center justify-center px-6 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-foreground text-sm font-medium rounded-lg transition-colors border border-border-subtle"
+          className="snx-secondary-button inline-flex items-center justify-center px-6 py-2.5 text-sm font-medium rounded-lg"
         >
           Return to Dashboard
         </Link>
@@ -148,7 +148,7 @@ export default function ServerView() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
-      className="flex h-full bg-transparent overflow-hidden"
+      className="snx-server-view flex h-full bg-transparent overflow-hidden"
     >
             
       
@@ -161,26 +161,26 @@ export default function ServerView() {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black/80 md:bg-black/40 dark:bg-black/40 backdrop-blur-3xl border-r border-border flex flex-col shadow-2xl transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 shrink-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+      <div className={`snx-server-sidebar fixed inset-y-0 left-0 z-50 w-64 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 shrink-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="snx-server-sidebar-header flex items-center justify-between p-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-             <Link to="/servers" className="p-1.5 bg-muted hover:bg-white/[0.08] border border-border-subtle shadow-sm rounded-lg text-muted-foreground hover:text-foreground transition-all shrink-0">
+             <Link to="/servers" className="snx-icon-button shrink-0">
               <ArrowLeft size={16} />
             </Link>
             <h1 className="text-lg font-bold tracking-tight text-foreground truncate pr-2">{server.name}</h1>
           </div>
           <button 
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden p-1.5 text-muted-foreground hover:text-foreground bg-muted rounded-lg transition-colors"
+            className="snx-icon-button md:hidden"
           >
             <X size={16} />
           </button>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1 custom-scrollbar">
+        <div className="snx-server-sidebar-scroll flex-1 overflow-y-auto p-3 flex flex-col gap-1 custom-scrollbar">
           {/* Status & Quick Actions */}
-          <div className="mb-4 p-3 bg-muted-subtle rounded-xl border border-border-subtle">
-             <div className="flex items-center space-x-2 mb-3">
+          <div className="snx-server-status-card mb-4 p-3 rounded-xl">
+             <div className="snx-server-status-line flex items-center space-x-2 mb-3">
                 <span className="flex h-2 w-2 relative shrink-0">
                    {server.status === 'online' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
                    <span className={`relative inline-flex rounded-full h-2 w-2 ${server.status === 'online' ? 'bg-emerald-500' : 'bg-zinc-600'}`}></span>
@@ -188,7 +188,7 @@ export default function ServerView() {
                 <span className="text-xs font-medium text-foreground-muted capitalize">{server.status}</span>
                 <span className="text-xs text-muted-foreground">•</span>
                 <button onClick={handleCopyIp} className="flex items-center space-x-1.5 px-1.5 py-0.5 rounded-md hover:bg-muted-hover transition-colors group cursor-pointer truncate" title="Copy Connection Info">
-                  <span className="text-[11px] font-mono text-muted-foreground group-hover:text-foreground-muted transition-colors truncate">
+                  <span className="snx-mono-label text-[11px] font-mono truncate">
                     {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
                   </span>
                   {copied ? <Check size={12} className="text-emerald-400 shrink-0" /> : <Copy size={12} className="text-muted-foreground group-hover:text-foreground-muted transition-colors shrink-0" />}
@@ -196,21 +196,21 @@ export default function ServerView() {
              </div>
              <div className="grid grid-cols-2 gap-2">
                 {server.status !== 'online' ? (
-                  <button disabled={isProcessing} onClick={() => { handleAction('start'); setSidebarOpen(false); }} className="col-span-2 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 font-semibold rounded-lg transition-all border border-emerald-500/20 flex items-center justify-center text-xs shadow-sm disabled:opacity-50">
+                  <button disabled={isProcessing} onClick={() => { handleAction('start'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--start col-span-2 py-1.5 font-semibold rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                     {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-emerald-500/50 border-t-emerald-500 rounded-full animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5" />} Start
                   </button>
                 ) : (
-                  <button disabled={isProcessing} onClick={() => { handleAction('stop'); setSidebarOpen(false); }} className="col-span-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-semibold rounded-lg transition-all border border-red-500/20 flex items-center justify-center text-xs shadow-sm disabled:opacity-50">
+                  <button disabled={isProcessing} onClick={() => { handleAction('stop'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--stop col-span-2 py-1.5 font-semibold rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                     {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-red-500/50 border-t-red-500 rounded-full animate-spin mr-1.5" /> : <Square className="w-3.5 h-3.5 mr-1.5" />} Stop
                   </button>
                 )}
-                <button disabled={isProcessing} onClick={() => { handleAction('restart'); setSidebarOpen(false); }} className="col-span-2 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 font-medium rounded-lg transition-all border border-orange-500/20 flex items-center justify-center text-xs shadow-sm disabled:opacity-50">
+                <button disabled={isProcessing} onClick={() => { handleAction('restart'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--restart col-span-2 py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />} Restart
                 </button>
              </div>
           </div>
           
-          <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-3" />
+          <div className="snx-divider h-px mb-3" />
           
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-3 tracking-wider uppercase">Menu</div>
 
@@ -221,7 +221,7 @@ export default function ServerView() {
                 key={tab.name}
                 to={tab.path}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center space-x-3 px-3 py-2.5 text-sm font-medium transition-all rounded-lg ${isActive ? 'bg-indigo-500/20 text-indigo-300 shadow-sm border border-indigo-500/30' : 'text-muted-foreground hover:text-foreground-muted hover:bg-white/[0.05] border border-transparent'}`}
+                className={`snx-server-nav-link flex items-center space-x-3 px-3 py-2.5 text-sm font-medium transition-all rounded-lg ${isActive ? 'is-active' : ''}`}
               >
                 <div className={`${isActive ? 'text-indigo-400' : 'text-muted-foreground'} transition-colors`}>
                   {React.cloneElement(tab.icon, { className: "w-4 h-4" })}
@@ -231,7 +231,7 @@ export default function ServerView() {
             );
           })}
           
-          <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-4" />
+          <div className="snx-divider h-px my-4" />
           
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-3 tracking-wider uppercase">Navigation</div>
 
@@ -241,7 +241,7 @@ export default function ServerView() {
                 key={tab.name}
                 to={tab.path}
                 onClick={() => setSidebarOpen(false)}
-                className="flex items-center space-x-3 px-3 py-2.5 text-sm font-medium transition-all rounded-lg text-muted-foreground hover:text-foreground-muted hover:bg-white/[0.05] border border-transparent"
+                className="snx-server-nav-link flex items-center space-x-3 px-3 py-2.5 text-sm font-medium transition-all rounded-lg"
               >
                 <div className="text-muted-foreground transition-colors">
                   {React.cloneElement(tab.icon, { className: "w-4 h-4" })}
@@ -253,20 +253,20 @@ export default function ServerView() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col h-full bg-transparent overflow-hidden relative isolate">
+      <div className="snx-server-main flex-1 flex flex-col h-full bg-transparent overflow-hidden relative isolate">
         {/* Top Header with Hamburger */}
-        <div className="bg-black/40 dark:bg-black/40 backdrop-blur-2xl border-b border-border p-3 md:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.5)] relative z-20">
+        <div className="snx-server-topbar p-3 md:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 relative z-20">
           <div className="flex items-center justify-between w-full md:w-auto">
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="md:hidden p-1.5 bg-muted hover:bg-white/[0.08] border border-border-subtle shadow-sm rounded-lg text-muted-foreground hover:text-foreground transition-all flex items-center justify-center relative overflow-hidden group"
+                className="snx-icon-button snx-menu-button md:hidden flex items-center justify-center relative overflow-hidden group"
               >
                 <div className="absolute inset-0 bg-red-500/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                 <Menu size={18} className="relative z-10 group-hover:text-red-400 transition-colors" />
               </button>
-              <div className="w-px h-6 bg-muted-hover mx-1 hidden sm:block" />
-              <h1 className="text-base md:text-lg font-bold tracking-tight text-foreground mb-0.5 leading-none">{server.name}</h1>
+              <div className="snx-topbar-divider w-px h-6 mx-1 hidden sm:block" />
+              <h1 className="snx-server-title text-base md:text-lg font-bold tracking-tight mb-0.5 leading-none">{server.name}</h1>
             </div>
             <div className="flex md:hidden items-center space-x-2 shrink-0">
                <span className="flex h-2 w-2 relative shrink-0">
@@ -278,13 +278,13 @@ export default function ServerView() {
           </div>
           
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 sm:pb-0 justify-between w-full md:w-auto">
-             <button onClick={handleCopyIp} className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-muted hover:bg-white/[0.08] border border-border-subtle transition-colors group cursor-pointer shrink-0" title="Copy Connection Info">
+             <button onClick={handleCopyIp} className="snx-connection-chip flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer shrink-0" title="Copy Connection Info">
                 <span className="text-xs font-mono text-muted-foreground group-hover:text-foreground-muted transition-colors truncate max-w-[150px] lg:max-w-[200px]">
                   {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
                 </span>
                 {copied ? <Check size={14} className="text-emerald-400 shrink-0" /> : <Copy size={14} className="text-muted-foreground group-hover:text-foreground-muted transition-colors shrink-0" />}
              </button>
-             <div className="hidden md:block w-px h-5 bg-muted-hover" />
+             <div className="snx-topbar-divider hidden md:block w-px h-5" />
              <div className="hidden md:flex items-center space-x-2 shrink-0">
                 <span className="flex h-2 w-2 relative shrink-0">
                    {server.status === 'online' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
@@ -295,23 +295,23 @@ export default function ServerView() {
                 
              <div className="flex items-center space-x-1 sm:space-x-2 shrink-0 ml-auto md:ml-1">
                 {server.status !== 'online' ? (
-                  <button disabled={isProcessing} onClick={() => handleAction('start')} className="p-1.5 sm:px-3 sm:py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 font-semibold rounded-lg transition-all border border-emerald-500/20 flex items-center justify-center text-xs shadow-sm disabled:opacity-50">
+                  <button disabled={isProcessing} onClick={() => handleAction('start')} className="snx-quick-action snx-quick-action--start p-1.5 sm:px-3 sm:py-1.5 font-semibold rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                     {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-emerald-500/50 border-t-emerald-500 rounded-full animate-spin sm:mr-1.5" /> : <Play className="w-3.5 h-3.5 sm:mr-1.5" />} <span className="hidden sm:block">Start</span>
                   </button>
                 ) : (
-                  <button disabled={isProcessing} onClick={() => handleAction('stop')} className="p-1.5 sm:px-3 sm:py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-semibold rounded-lg transition-all border border-red-500/20 flex items-center justify-center text-xs shadow-sm disabled:opacity-50">
+                  <button disabled={isProcessing} onClick={() => handleAction('stop')} className="snx-quick-action snx-quick-action--stop p-1.5 sm:px-3 sm:py-1.5 font-semibold rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                     {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-red-500/50 border-t-red-500 rounded-full animate-spin sm:mr-1.5" /> : <Square className="w-3.5 h-3.5 sm:mr-1.5" />} <span className="hidden sm:block">Stop</span>
                   </button>
                 )}
-                <button disabled={isProcessing} onClick={() => handleAction('restart')} className="p-1.5 sm:px-3 sm:py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 font-medium rounded-lg transition-all border border-orange-500/20 flex items-center justify-center text-xs shadow-sm disabled:opacity-50">
+                <button disabled={isProcessing} onClick={() => handleAction('restart')} className="snx-quick-action snx-quick-action--restart p-1.5 sm:px-3 sm:py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin sm:mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 sm:mr-1.5" />} <span className="hidden sm:block">Restart</span>
                 </button>
              </div>
           </div>
         </div>
 
-<div className="flex-1 relative flex flex-col min-h-0 bg-transparent">
-        <div className="flex-1 flex flex-col relative overflow-hidden bg-transparent min-h-0">
+<div className="snx-server-content flex-1 relative flex flex-col min-h-0 bg-transparent">
+        <div className="flex-1 flex flex-col relative overflow-hidden bg-transparent min-h-0 snx-server-route-surface">
            <Routes>
              <Route path="/" element={<ServerConsole serverId={id!} server={server} />} />
              <Route path="/properties" element={<ServerProperties serverId={id!} />} />
@@ -336,7 +336,7 @@ export default function ServerView() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-[#121214] border border-red-500/30 shadow-2xl shadow-red-500/10 rounded-2xl p-6 max-w-md w-full relative overflow-hidden"
+              className="snx-warning-modal rounded-2xl p-6 max-w-md w-full relative overflow-hidden"
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-amber-500" />
               <div className="flex items-start mb-4">
@@ -356,7 +356,7 @@ export default function ServerView() {
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   onClick={() => setShowRamWarning(false)}
-                  className="px-4 py-2 bg-muted hover:bg-muted-hover text-foreground font-medium rounded-xl transition-colors"
+                  className="snx-secondary-button px-4 py-2 font-medium rounded-xl"
                 >
                   Cancel
                 </button>
@@ -365,7 +365,7 @@ export default function ServerView() {
                     setShowRamWarning(false);
                     executeAction('start');
                   }}
-                  className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-xl transition-colors border border-red-500/30"
+                  className="snx-danger-button px-4 py-2 font-bold rounded-xl"
                 >
                   Start Anyway
                 </button>
