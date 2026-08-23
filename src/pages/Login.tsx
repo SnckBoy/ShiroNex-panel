@@ -143,12 +143,14 @@ export default function Login() {
 
       const result = await signInWithPopup(auth, provider);
       const googleUser = result.user;
+      const idToken = await googleUser.getIdToken();
 
       if (!googleUser.email) {
         throw new Error("No email associated with this Google account");
       }
 
       const res = await axios.post("/api/auth/google", {
+        idToken,
         email: googleUser.email,
         googleId: googleUser.uid,
         name: googleUser.displayName || "",
@@ -172,12 +174,6 @@ export default function Login() {
       setIsLoading(false);
     }
   };
-
-  const isDevPort3000 = typeof window !== "undefined" && (
-    window.location.port === "3000" || 
-    window.location.hostname === "localhost" || 
-    window.location.hostname === "127.0.0.1"
-  );
 
   return (
     <div className="desert-wrapper" onMouseMove={handleMouseMove}>
@@ -236,7 +232,7 @@ export default function Login() {
           </button>
         </form>
 
-        {enableGoogleLogin && isDevPort3000 && (
+        {enableGoogleLogin && firebaseApiKey && firebaseProjectId && (
           <div style={{ marginTop: "1rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", margin: "0.8rem 0" }}>
               <div style={{ flex: 1, height: "1px", background: "rgba(255, 255, 255, 0.2)" }} />

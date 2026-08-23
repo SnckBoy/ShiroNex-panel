@@ -42,12 +42,6 @@ export default function SettingsPage(): React.ReactElement {
     }
   }, [user?.username]);
 
-  const isDevPort3000 = typeof window !== "undefined" && (
-    window.location.port === "3000" || 
-    window.location.hostname === "localhost" || 
-    window.location.hostname === "127.0.0.1"
-  );
-
   const handleChangeUsername = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustomUsername || newCustomUsername.trim().length < 3) {
@@ -254,8 +248,8 @@ export default function SettingsPage(): React.ReactElement {
 
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-      alert("Password must be 12-256 characters and include uppercase, lowercase, number, and special character");
+    if (password.length < 8 || password.length > 256) {
+      alert("Password must be 8-256 characters");
       return;
     }
     setIsCreatingUser(true);
@@ -274,8 +268,8 @@ export default function SettingsPage(): React.ReactElement {
 
   const changeUserPassword = async (id: string) => {
     try {
-      if (adminUserNewPassword.length < 12 || !/[a-z]/.test(adminUserNewPassword) || !/[A-Z]/.test(adminUserNewPassword) || !/\d/.test(adminUserNewPassword) || !/[^A-Za-z0-9]/.test(adminUserNewPassword)) {
-         alert("Password must be 12-256 characters and include uppercase, lowercase, number, and special character");
+      if (adminUserNewPassword.length < 8 || adminUserNewPassword.length > 256) {
+         alert("Password must be 8-256 characters");
          return;
       }
       await axios.put(`/api/system/users/${id}/password`, { newPassword: adminUserNewPassword });
@@ -304,7 +298,6 @@ export default function SettingsPage(): React.ReactElement {
   const renderGoogleFirebase = () => (
     <>
     {isAdmin && (
-        isDevPort3000 ? (
           <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden mt-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 relative z-10 border-b border-border-subtle pb-6">
               <div>
@@ -449,17 +442,6 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             </form>
           </div>
-        ) : (
-          <div className="bg-card/50 border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden mt-8 opacity-80">
-            <h2 className="text-xl font-bold flex items-center text-foreground">
-              <Key className="mr-3 text-amber-400/70 w-6 h-6" /> Google & Firebase Authentication
-            </h2>
-            <p className="text-xs text-amber-300/90 mt-3 bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl flex items-center gap-2">
-              <AlertCircle size={16} className="text-amber-400 flex-shrink-0" />
-              <span>Google Authentication configuration is restricted to Port 3000 / Development Environment.</span>
-            </p>
-          </div>
-        )
       )}
     </>
   );

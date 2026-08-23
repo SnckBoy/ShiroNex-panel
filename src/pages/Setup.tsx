@@ -5,15 +5,10 @@ import { ArrowRight, LockKeyhole, Mail, Server, UserRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 
-const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 8;
 
 const passwordIsStrong = (value: string) =>
-  value.length >= MIN_PASSWORD_LENGTH &&
-  value.length <= 256 &&
-  /[a-z]/.test(value) &&
-  /[A-Z]/.test(value) &&
-  /\d/.test(value) &&
-  /[^A-Za-z0-9]/.test(value);
+  value.length >= MIN_PASSWORD_LENGTH && value.length <= 256;
 
 export default function Setup() {
   const navigate = useNavigate();
@@ -61,7 +56,7 @@ export default function Setup() {
       return;
     }
     if (!passwordIsStrong(password)) {
-      setError("Password must be 12-256 characters and include uppercase, lowercase, number, and special character.");
+      setError(`Password must be ${MIN_PASSWORD_LENGTH}-256 characters.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -125,10 +120,10 @@ export default function Setup() {
 
             <label className="block space-y-2"><span className="text-sm font-medium">Username</span><span className="relative block"><UserRound className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="owner" /></span></label>
             <label className="block space-y-2"><span className="text-sm font-medium">Email</span><span className="relative block"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="owner@example.com" /></span></label>
-            <label className="block space-y-2"><span className="text-sm font-medium">Password</span><span className="relative block"><LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="At least 12 characters" /></span></label>
+            <label className="block space-y-2"><span className="text-sm font-medium">Password</span><span className="relative block"><LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="At least 8 characters" /></span></label>
             <label className="block space-y-2"><span className="text-sm font-medium">Confirm password</span><span className="relative block"><LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="Repeat your password" /></span></label>
 
-            <p className="text-xs leading-relaxed text-muted-foreground">Use at least 12 characters with uppercase, lowercase, a number, and a special character. ShiroNex never creates or displays a default password.</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">Use at least 8 characters. ShiroNex never creates or displays a default password.</p>
             <button type="submit" disabled={submitting || Boolean(success)} className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"><span className="inline-flex items-center gap-2">{submitting ? "Creating Owner account..." : "Create Owner account"}{!submitting && <ArrowRight size={18} />}</span></button>
           </form>
 
