@@ -10,6 +10,7 @@ import extract from "extract-zip";
 import {decryptSecret} from "../services/security.js";
 import {nodeControl} from "../services/nodeClient.js";
 import {audit} from "../services/security.js";
+import { copyDirectorySafely, extractZipSafely } from "../services/archiveSafety.js";
 
 
 const remoteForServer=async(server:any)=>{
@@ -1029,5 +1030,58 @@ export const updateSuspend = async (req: Request, res: Response) => {
     res.json(server);
   } catch (error) {
     res.status(500).json({ error: "Failed to suspend server" });
+  }
+};
+
+
+export const importModpack = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const uploaded = (req as any).file as { path?: string; originalname?: string } | undefined;
+  if (!uploaded?.path) return res.status(400).json({ error: "A .zip or .mrpack archive is required" });
+  if (!canManageServer(req, (req as any).server)) return res.status(403).json({ error: "Unauthorized" });
+
+  const originalName = String(uploaded.originalname || "").toLowerCase();
+  if (!originalName.endsWith(".zip") && !originalName.endsWith(".mrpack")) {
+    await fs.remove(uploaded.path);
+    return res.status(400).json({ error: "Only .zip and .mrpack archives are supported" });
+  }
+
+  const serverDir = path.join(process.cwd(), ".data", "servers", id);
+  const backupsDir = path.join(process.cwd(), ".data", "backups", id);
+  const tempDir = path.join(process.cwd(), ".data", "temp", `modpack-${crypto.randomUUID()}`);
+  const confirmReplace = req.body?.confirmReplace === true || req.body?.confirmReplace === "true";
+
+  try {
+    await fs.ensureDir(serverDir);
+    const existing = await fs.readdir(serverDir);
+    if (existing.length > 0 && !confirmReplace) {
+      return res.status(409).json({ error: "This server already contains files. Create a backup and confirm replacement before importing.", requiresConfirmation: true });
+    }
+
+    let backupFilename: string | null = null;
+    if (existing.length > 0) {
+      await fs.ensureDir(backupsDir);
+      backupFilename = `pre-modpack-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
+      const backupPath = path.join(backupsDir, backupFilename);
+      const output = fs.createWriteStream(backupPath);
+      const archive = new ZipArchive({ zlib: { level: 9 } });
+      archive.pipe(output);
+      archive.directory(serverDir, false);
+      await archive.finalize();
+      await new Promise<void>((resolve, reject) => { output.on("close", () => resolve()); output.on("error", reject); });
+    }
+
+    const entries = await extractZipSafely(uploaded.path, tempDir);
+    const manifestPath = path.join(tempDir, "modrinth.index.json");
+    const overridesPath = path.join(tempDir, "overrides");
+    const sourcePath = await fs.pathExists(overridesPath) ? overridesPath : tempDir;
+    await copyDirectorySafely(sourcePath, serverDir);
+    await fs.remove(uploaded.path);
+    await fs.remove(tempDir);
+    res.json({ success: true, entries: entries.length, backupFilename, message: "Archive validated and imported. Review the server files before starting." });
+  } catch (error: any) {
+    await fs.remove(uploaded.path).catch(() => undefined);
+    await fs.remove(tempDir).catch(() => undefined);
+    res.status(400).json({ error: error?.message || "Modpack import failed" });
   }
 };
