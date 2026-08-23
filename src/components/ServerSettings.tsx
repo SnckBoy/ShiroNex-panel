@@ -16,8 +16,10 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   const [isSavingAlias, setIsSavingAlias] = useState(false);
   
   const [versions, setVersions] = useState<string[]>([]);
+  const [javaVersions, setJavaVersions] = useState<string[]>([]);
   const [selectedVersion, setSelectedVersion] = useState(server?.version || "");
   const [selectedType, setSelectedType] = useState(server?.type || "PAPER");
+  const [selectedJavaVersion, setSelectedJavaVersion] = useState(server?.javaVersion || "");
   const [isChangingVersion, setIsChangingVersion] = useState(false);
   const [versionProgress, setVersionProgress] = useState(0);
   const [showDowngradeRestartPopup, setShowDowngradeRestartPopup] = useState(false);
@@ -38,6 +40,10 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
         setVersions([]);
       }
     }).catch(() => {});
+
+    axios.get("/api/system/java-versions").then((res) => {
+      if (Array.isArray(res.data)) setJavaVersions(res.data);
+    }).catch(() => setJavaVersions(["8", "11", "17", "21", "25"]));
 
     if (user?.role === "admin" || user?.role === "owner") {
       axios.get("/api/auth/users").then(res => {
@@ -77,7 +83,11 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
         });
       }, 500);
 
-      await axios.put(`/api/servers/${serverId}/version`, { version: selectedVersion, type: selectedType });
+      await axios.put(`/api/servers/${serverId}/version`, {
+        version: selectedVersion,
+        type: selectedType,
+        javaVersion: selectedJavaVersion || ""
+      });
       clearInterval(interval);
       setVersionProgress(100);
       
@@ -90,6 +100,19 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
       alert(e.response?.data?.error || "Failed to update server version. Ensure the server is stopped.");
       setIsChangingVersion(false);
       setVersionProgress(0);
+    }
+  };
+
+  const handleChangeJavaVersion = async () => {
+    if (!selectedJavaVersion) return;
+    try {
+      setIsChangingVersion(true);
+      await axios.put(`/api/servers/${serverId}/java-version`, { javaVersion: selectedJavaVersion });
+      alert(`Java ${selectedJavaVersion} will be used after the next server start.`);
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to change Java version");
+    } finally {
+      setIsChangingVersion(false);
     }
   };
 
@@ -195,7 +218,34 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                     <option value="BUNGEECORD">BungeeCord (Proxy)</option>
                     <option value="FORGE">Forge (Modded)</option>
                     <option value="FABRIC">Fabric (Modded)</option>
+                    <option value="PURPUR">Purpur (Performance)</option>
+                    <option value="FOLIA">Folia (Regionized)</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">Java Runtime</label>
+                  <select
+                    value={selectedJavaVersion}
+                    onChange={e => setSelectedJavaVersion(e.target.value)}
+                    disabled={isChangingVersion}
+                    className="w-full bg-card border border-border focus:border-amber-500 rounded-xl px-4 py-3 text-foreground transition-all outline-none font-mono"
+                  >
+                    <option value="">Auto / image default</option>
+                    {javaVersions.map(java => <option key={java} value={java}>Java {java}</option>)}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-2">Java 8 is intended for older Forge; Java 17–25 cover modern releases.</p>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleChangeJavaVersion}
+                    disabled={isChangingVersion || !selectedJavaVersion || selectedJavaVersion === (server.javaVersion || "")}
+                    className="px-5 py-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-medium rounded-xl border border-cyan-500/20 transition-all disabled:opacity-50 h-[50px]"
+                  >
+                    Apply Java
+                  </button>
                 </div>
               </div>
 
@@ -215,7 +265,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                 <div className="flex items-end">
                   <button 
                     onClick={handleChangeVersion}
-                    disabled={isChangingVersion || (selectedVersion === server.version && selectedType === server.type)}
+                    disabled={isChangingVersion || (selectedVersion === server.version && selectedType === server.type && selectedJavaVersion === (server.javaVersion || ""))}
                     className="px-6 py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 font-medium rounded-xl border border-amber-500/20 transition-all disabled:opacity-50 flex items-center min-w-[160px] justify-center h-[50px]"
                   >
                     {isChangingVersion ? "Updating..." : "Update Server"}
