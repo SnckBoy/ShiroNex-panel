@@ -70,6 +70,8 @@ export const getDocker = async (nodeId?: string) => {
 // Mock state for sandbox demo
 export const mockState: Record<string, boolean> = {};
 
+export const SUPPORTED_JAVA_VERSIONS = ["8", "11", "17", "21", "25"] as const;
+
 export const getVersions = async (type: string = "PAPER") => {
   const normalizedType = type.toUpperCase();
   if (normalizedType === "VELOCITY") {
@@ -108,10 +110,12 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     return "mock-container-id-" + serverData.id;
   }
 
-  const serverType = serverData.type || "PAPER";
-  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType.toUpperCase());
-  const shortImage = isProxy ? "itzg/bungeecord:latest" : "itzg/minecraft-server:latest";
-  const fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : "docker.io/itzg/minecraft-server:latest";
+  const serverType = String(serverData.type || "PAPER").toUpperCase();
+  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
+  const javaVersion = SUPPORTED_JAVA_VERSIONS.includes(String(serverData.javaVersion) as typeof SUPPORTED_JAVA_VERSIONS[number]) ? String(serverData.javaVersion) : "";
+  const javaTag = javaVersion ? `:java${javaVersion}` : ":latest";
+  const shortImage = isProxy ? "itzg/bungeecord:latest" : `itzg/minecraft-server${javaTag}`;
+  const fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : `docker.io/itzg/minecraft-server${javaTag}`;
 
   const findImageId = async (): Promise<string | null> => {
     try {
