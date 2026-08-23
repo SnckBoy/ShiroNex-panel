@@ -325,3 +325,139 @@ body::before{background:#a855f7;left:-120px;top:-120px}body::after{background:#0
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ShiroNex live wallpaper engine */
+.global-live-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+  background: var(--bg-background);
+  transition: background .45s ease, opacity .45s ease;
+}
+
+.wallpaper-image,
+.wallpaper-orb,
+.wallpaper-grid,
+.wallpaper-stars,
+.wallpaper-noise,
+.wallpaper-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.wallpaper-image {
+  z-index: -4;
+  inset: -2%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: .28;
+  transform: scale(1.04);
+}
+
+.wallpaper-orb {
+  z-index: -3;
+  width: 34rem;
+  height: 34rem;
+  inset: auto;
+  border-radius: 999px;
+  filter: blur(110px);
+  opacity: .17;
+  will-change: transform;
+  animation: wallpaper-drift 20s ease-in-out infinite alternate;
+}
+.wallpaper-orb-one { top: -16rem; left: -10rem; background: #8b5cf6; }
+.wallpaper-orb-two { top: 24%; right: -16rem; background: #06b6d4; animation-delay: -7s; animation-duration: 26s; }
+.wallpaper-orb-three { bottom: -22rem; left: 28%; background: #ec4899; animation-delay: -13s; animation-duration: 31s; opacity: .1; }
+
+.wallpaper-grid {
+  z-index: -2;
+  inset: auto -10% -24% -10%;
+  height: 75%;
+  opacity: 0;
+  transform: perspective(580px) rotateX(58deg);
+  transform-origin: bottom;
+  background-image: linear-gradient(rgba(125,211,252,.2) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,.2) 1px, transparent 1px);
+  background-size: 58px 58px;
+  mask-image: linear-gradient(to top, black, transparent 82%);
+}
+
+.wallpaper-stars {
+  z-index: -2;
+  opacity: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,.65) 0 1px, transparent 1.5px), radial-gradient(circle, rgba(103,232,249,.5) 0 1px, transparent 1.5px);
+  background-size: 89px 89px, 151px 151px;
+  background-position: 19px 23px, 61px 47px;
+  animation: wallpaper-stars-drift 34s linear infinite;
+}
+
+.wallpaper-noise {
+  z-index: -1;
+  opacity: .025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+.wallpaper-vignette {
+  z-index: -1;
+  background: radial-gradient(circle at 50% 40%, transparent 25%, rgba(0,0,0,.25) 100%);
+  opacity: .5;
+}
+
+.effect-aurora .wallpaper-orb { opacity: .2; }
+.effect-animated-gradient { background: linear-gradient(120deg, #050816, #15113a, #062a35, #12091f); background-size: 240% 240%; animation: wallpaper-gradient 20s ease infinite; }
+.effect-animated-gradient .wallpaper-orb { opacity: .08; }
+.effect-grid .wallpaper-grid { opacity: .8; }
+.effect-nebula { background: radial-gradient(circle at 20% 20%, rgba(124,58,237,.16), transparent 32%), radial-gradient(circle at 80% 75%, rgba(14,165,233,.12), transparent 30%), var(--bg-background); }
+.effect-nebula .wallpaper-orb { opacity: .24; filter: blur(140px); }
+.effect-starfield .wallpaper-stars { opacity: .76; }
+.effect-starfield .wallpaper-orb { opacity: .06; }
+.global-live-wallpaper:has(.wallpaper-image) .wallpaper-image { opacity: .42; }
+.global-live-wallpaper.effect-none .wallpaper-orb,
+.global-live-wallpaper.effect-none .wallpaper-grid,
+.global-live-wallpaper.effect-none .wallpaper-stars,
+.global-live-wallpaper.effect-none .wallpaper-noise,
+.global-live-wallpaper.effect-none .wallpaper-vignette { opacity: 0; }
+
+@keyframes wallpaper-drift { to { transform: translate3d(48px, 28px, 0) scale(1.08); } }
+@keyframes wallpaper-gradient { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes wallpaper-stars-drift { to { background-position: 108px 127px, -82px 161px; } }
+
+html[data-appearance="light"] {
+  --bg-background: #f4f7fb;
+  --bg-card: #ffffff;
+  --text-foreground: #172033;
+  --text-foreground-muted: #334155;
+  --text-muted-foreground: #64748b;
+  --border-border: rgba(71,85,105,.18);
+  --border-border-subtle: rgba(71,85,105,.1);
+  --border-border-strong: rgba(71,85,105,.28);
+  --bg-muted: rgba(71,85,105,.07);
+  --bg-muted-hover: rgba(71,85,105,.12);
+  --bg-muted-subtle: rgba(71,85,105,.04);
+  --btn-primary-bg: #172033;
+  --btn-primary-text: #ffffff;
+}
+html[data-appearance="light"] body::before,
+html[data-appearance="light"] body::after { opacity: .06; }
+html[data-appearance="light"] .global-live-wallpaper { background: #eef3f9; }
+html[data-appearance="light"] .wallpaper-image { opacity: .2; }
+html[data-appearance="light"] .wallpaper-vignette { opacity: .12; background: radial-gradient(circle at 50% 40%, transparent 25%, rgba(71,85,105,.18) 100%); }
+html[data-appearance="light"] .effect-animated-gradient { background: linear-gradient(120deg, #eef2ff, #e0f2fe, #fdf2f8, #ecfeff); background-size: 240% 240%; }
+html[data-appearance="light"] .shironex-glass { background: linear-gradient(145deg, rgba(255,255,255,.84), rgba(241,245,249,.78)); border-color: rgba(71,85,105,.12); box-shadow: 0 24px 80px rgba(71,85,105,.12), inset 0 1px rgba(255,255,255,.8); }
+html[data-appearance="light"] .shironex-gradient-text { background: linear-gradient(90deg, #312e81, #7c3aed, #0891b2); background-clip: text; -webkit-background-clip: text; }
+html[data-appearance="light"] .shironex-gradient-border { background: linear-gradient(#fff,#fff) padding-box, linear-gradient(90deg,#c026d355,#6366f155,#0891b255) border-box; }
+
+html.reduce-motion .global-live-wallpaper *,
+html.reduce-motion .global-live-wallpaper,
+html.reduce-motion .wallpaper-image,
+html.reduce-motion .wallpaper-stars { animation: none !important; }
+html.reduce-motion .wallpaper-orb { transform: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .global-live-wallpaper *, .global-live-wallpaper { animation: none !important; }
+}
