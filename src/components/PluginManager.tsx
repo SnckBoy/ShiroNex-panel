@@ -1,105 +1,72 @@
-import React, { useEffect, useState } from "react"; 
-import { LoadingOverlay } from "../components/LoadingOverlay";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Search, Download, RefreshCw, Puzzle, AlertCircle, Box, Server, Cpu } from "lucide-react";
+import {
+  AlertCircle,
+  Box,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  Filter,
+  Loader2,
+  Puzzle,
+  Search,
+  Server,
+  SlidersHorizontal,
+  Star,
+} from "lucide-react";
+import { LoadingOverlay } from "./LoadingOverlay";
 
-interface Plugin {
+type Provider = "all" | "modrinth" | "hangar" | "spiget";
+type SortMode = "downloads" | "name" | "updated" | "rating";
+
+interface MarketplacePlugin {
   id: string;
-  source: 'modrinth' | 'spigot' | 'hangar';
+  provider: Exclude<Provider, "all">;
+  kind: "plugin" | "mod" | "modpack";
   name: string;
-  tag: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
   downloads: number;
-  rating: number;
-  icon: string | null;
+  rating: number | null;
+  latestVersion: string | null;
+  gameVersions: string[];
+  loaders: string[];
+  platforms: string[];
+  updatedAt: string | null;
+  projectUrl: string;
+  compatibility: "known" | "unknown";
 }
 
+const sourceLabels: Record<Provider, string> = {
+  all: "All providers",
+  modrinth: "Modrinth",
+  hangar: "Hangar",
+  spiget: "Spiget",
+};
+
 export default function PluginManager({ serverId }: { serverId: string }) {
-  const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [plugins, setPlugins] = useState<MarketplacePlugin[]>([]);
   const [loading, setLoading] = useState(false);
   const [isInstalling, setIsInstalling] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [activeSource, setActiveSource] = useState<'all' | 'modrinth' | 'spigot' | 'hangar'>('all');
+  const [provider, setProvider] = useState<Provider>("all");
+  const [sort, setSort] = useState<SortMode>("downloads");
+  const [gameVersion, setGameVersion] = useState("");
+  const [loader, setLoader] = useState("");
+  const [error, setError] = useState("");
 
-  const searchPlugins = async (searchQuery: string = "essentials") => {
+  const searchPlugins = async (event?: React.FormEvent) => {
+    event?.preventDefault();
     try {
       setLoading(true);
-      
-      const q = searchQuery.trim() || 'essentials';
-      const results: Plugin[] = [];
-      
-      const promises = [];
-      
-      // Create a clean axios instance for external requests so we don't send our auth token
-      const externalAxios = axios.create();
-      delete externalAxios.defaults.headers.common['Authorization'];
-      
-      if (activeSource === 'all' || activeSource === 'modrinth') {
-        promises.push(
-          externalAxios.get(`https://api.modrinth.com/v2/search?query=${q}&facets=[["project_type:plugin"]]&limit=15`)
-            .then(res => {
-              res.data.hits.forEach((hit: any) => {
-                results.push({
-                  id: hit.project_id,
-                  source: 'modrinth',
-                  name: hit.title,
-                  tag: hit.description,
-                  downloads: hit.downloads,
-                  rating: 0,
-                  icon: hit.icon_url
-                });
-              });
-            }).catch(() => {})
-        );
-      }
-      
-      if (activeSource === 'all' || activeSource === 'spigot') {
-        promises.push(
-          externalAxios.get(`https://api.spiget.org/v2/search/resources/${q}?field=name&size=15&page=1`)
-            .then(res => {
-              if(Array.isArray(res.data)) {
-                res.data.forEach((hit: any) => {
-                  results.push({
-                    id: hit.id.toString(),
-                    source: 'spigot',
-                    name: hit.name,
-                    tag: hit.tag,
-                    downloads: hit.downloads,
-                    rating: hit.rating ? hit.rating.average : 0,
-                    icon: hit.icon?.url ? `https://spigotmc.org/${hit.icon.url}` : null
-                  });
-                });
-              }
-            }).catch(() => {})
-        );
-      }
-
-      if (activeSource === 'all' || activeSource === 'hangar') {
-        promises.push(
-          externalAxios.get(`https://hangar.papermc.io/api/v1/projects?q=${q}&limit=15`)
-            .then(res => {
-              if (res.data && res.data.result) {
-                res.data.result.forEach((hit: any) => {
-                  results.push({
-                    id: `${hit.namespace.owner}/${hit.namespace.slug}`,
-                    source: 'hangar',
-                    name: hit.name,
-                    tag: hit.description,
-                    downloads: hit.stats?.downloads || 0,
-                    rating: 0,
-                    icon: null
-                  });
-                });
-              }
-            }).catch(() => {})
-        );
-      }
-
-      await Promise.all(promises);
-      
-      results.sort((a, b) => b.downloads - a.downloads);
-      setPlugins(results);
-    } catch (e) {
-      console.error(e);
+      setError("");
+      const response = await axios.get<{ items: MarketplacePlugin[] }>("/api/marketplace/search", {
+        params: { q: query.trim(), kind: "plugin", provider, gameVersion: gameVersion.trim(), loader: loader.trim(), limit: 40 },
+      });
+      setPlugins(response.data.items || []);
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.error || "Marketplace providers are temporarily unavailable.");
       setPlugins([]);
     } finally {
       setLoading(false);
@@ -107,161 +74,83 @@ export default function PluginManager({ serverId }: { serverId: string }) {
   };
 
   useEffect(() => {
-    searchPlugins();
-  }, [activeSource]);
+    void searchPlugins();
+  }, [provider]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    searchPlugins(query);
-  };
+  const sortedPlugins = useMemo(() => {
+    return [...plugins].sort((left, right) => {
+      if (sort === "name") return left.name.localeCompare(right.name);
+      if (sort === "rating") return (right.rating || 0) - (left.rating || 0);
+      if (sort === "updated") return String(right.updatedAt || "").localeCompare(String(left.updatedAt || ""));
+      return right.downloads - left.downloads;
+    });
+  }, [plugins, sort]);
 
-  const handleInstall = async (plugin: Plugin) => {
-    if (!confirm(`Are you sure you want to install ${plugin.name}?`)) return;
+  const handleInstall = async (plugin: MarketplacePlugin) => {
+    if (!confirm(`Install ${plugin.name} on this server? Compatibility will be checked by the server before installation.`)) return;
     try {
       setIsInstalling(plugin.id);
-      
-      const res = await axios.post(`/api/servers/${serverId}/plugins/install`, {
-        source: plugin.source,
+      const response = await axios.post(`/api/servers/${serverId}/plugins/install`, {
+        source: plugin.provider,
         pluginId: plugin.id,
-        pluginName: plugin.name
+        pluginName: plugin.name,
       });
-      
-      alert(res.data.message || `${plugin.name} installed successfully! Restart the server to apply changes.`);
-    } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to install plugin.");
+      alert(response.data.message || `${plugin.name} installed successfully. Restart or reload the server to apply it.`);
+    } catch (requestError: any) {
+      alert(requestError.response?.data?.error || "Plugin installation failed.");
     } finally {
       setIsInstalling(null);
     }
   };
 
-  const getSourceIcon = (source: string) => {
-    switch (source) {
-      case 'modrinth': return <Box className="w-3 h-3 text-green-400" />;
-      case 'spigot': return <Server className="w-3 h-3 text-orange-400" />;
-      case 'hangar': return <Cpu className="w-3 h-3 text-blue-400" />;
-      default: return <Puzzle className="w-3 h-3 text-indigo-400" />;
-    }
-  };
-
-  const getSourceName = (source: string) => {
-    switch (source) {
-      case 'modrinth': return 'Modrinth';
-      case 'spigot': return 'SpigotMC';
-      case 'hangar': return 'Paper Hangar';
-      default: return source;
-    }
-  };
-
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 text-foreground bg-transparent">
-      <div className="max-w-4xl mx-auto space-y-6 md:space-y-8">
-        
-        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+      <div className="max-w-6xl mx-auto space-y-5 md:space-y-7">
+        <header className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight drop-shadow-md mb-1">Plugin Manager</h2>
-            <p className="text-[11px] font-bold text-indigo-400/80 uppercase tracking-widest mt-1">Search and install plugins from Modrinth, Spigot, and Paper Hangar.</p>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300/80"><Puzzle className="h-4 w-4" /> Marketplace</div>
+            <h2 className="mt-2 text-2xl md:text-3xl font-black tracking-tight text-foreground">Plugin Marketplace</h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Search trusted public providers, review compatibility signals, and install plugins on this server without leaving the panel.</p>
           </div>
-        </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> Official APIs only</div>
+        </header>
 
-        <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border rounded-3xl overflow-hidden shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle">
-          <div className="p-4 border-b border-border-subtle space-y-4">
-            <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search for plugins..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                />
-              </div>
-              <button 
-                type="submit"
-                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
-              >
-                Search
-              </button>
-            </form>
-            
-            <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1">
-              {['all', 'modrinth', 'spigot', 'hangar'].map(src => (
-                <button
-                  key={src}
-                  type="button"
-                  onClick={() => setActiveSource(src as any)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeSource === src ? 'bg-indigo-500 text-foreground' : 'bg-muted text-muted-foreground hover:bg-muted-hover hover:text-foreground'}`}
-                >
-                  {src === 'all' ? <Puzzle className="w-3.5 h-3.5" /> : getSourceIcon(src)}
-                  {src === 'all' ? 'All Sources' : getSourceName(src)}
-                </button>
-              ))}
-            </div>
+        <section className="snx-console-surface rounded-2xl border border-border-subtle p-4 md:p-5">
+          <form onSubmit={searchPlugins} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <label className="relative block">
+              <span className="sr-only">Search plugins</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search plugins by name or capability" className="w-full rounded-xl border border-border bg-muted-subtle py-3 pl-10 pr-4 text-sm text-foreground outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10" />
+            </label>
+            <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-sm font-bold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50" disabled={loading}>{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Search</button>
+            <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)} className="min-h-11 rounded-xl border border-border bg-muted-subtle px-3 text-sm text-foreground outline-none"><option value="downloads">Most downloaded</option><option value="rating">Highest rated</option><option value="updated">Recently updated</option><option value="name">Name</option></select>
+          </form>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label className="text-xs text-muted-foreground"><span className="mb-1.5 flex items-center gap-1.5"><Filter className="h-3.5 w-3.5" /> Provider</span><select value={provider} onChange={(event) => setProvider(event.target.value as Provider)} className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none">{Object.keys(sourceLabels).map((key) => <option key={key} value={key}>{sourceLabels[key as Provider]}</option>)}</select></label>
+            <label className="text-xs text-muted-foreground"><span className="mb-1.5 block">Minecraft version</span><input value={gameVersion} onChange={(event) => setGameVersion(event.target.value)} placeholder="e.g. 1.21.1" className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none" /></label>
+            <label className="text-xs text-muted-foreground"><span className="mb-1.5 block">Platform / loader</span><input value={loader} onChange={(event) => setLoader(event.target.value)} placeholder="Paper, Purpur, Folia" className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none" /></label>
           </div>
-          
-          <div className="divide-y divide-border-subtle">
-            {loading ? (
-              <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-indigo-500/50" />
-                Searching repositories...
+        </section>
+
+        {error && <div className="flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-200"><AlertCircle className="h-4 w-4 shrink-0" /> {error}</div>}
+        {!loading && !error && sortedPlugins.length === 0 && <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground"><SlidersHorizontal className="mx-auto mb-3 h-7 w-7" /><p>No plugins found for this search.</p><p className="mt-1 text-xs">Try another provider, version, or search term.</p></div>}
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          {sortedPlugins.map((plugin) => (
+            <article key={`${plugin.provider}-${plugin.id}`} className="snx-console-surface group flex min-w-0 flex-col gap-4 rounded-2xl border border-border-subtle p-4 transition hover:border-cyan-400/30 md:p-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted text-cyan-300">{plugin.iconUrl ? <img src={plugin.iconUrl} alt="" className="h-full w-full object-cover" /> : <Box className="h-6 w-6" />}</div>
+                <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-base font-bold text-foreground">{plugin.name}</h3><span className="rounded-full border border-cyan-400/20 bg-cyan-400/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300">{sourceLabels[plugin.provider]}</span></div><p className="mt-1 text-xs text-muted-foreground">by {plugin.author}</p></div>
+                <a href={plugin.projectUrl} target="_blank" rel="noreferrer" className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground" aria-label={`Open ${plugin.name} source page`}><ExternalLink className="h-4 w-4" /></a>
               </div>
-            ) : plugins.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                <AlertCircle className="w-8 h-8 mb-3 text-muted-foreground" />
-                No plugins found.
-              </div>
-            ) : (
-              plugins.map((plugin) => (
-                <div key={`${plugin.source}-${plugin.id}`} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-muted-subtle transition-colors">
-                  <div className="flex items-start gap-4 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border-subtle">
-                      {plugin.icon ? (
-                         <img src={plugin.icon} alt={plugin.name} className="w-full h-full object-cover" />
-                      ) : (
-                         <Puzzle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                         <h4 className="font-medium text-foreground-muted truncate">{plugin.name}</h4>
-                         <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-muted text-muted-foreground flex items-center gap-1">
-                            {getSourceIcon(plugin.source)} {plugin.source}
-                         </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{plugin.tag}</p>
-                      <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
-                        {plugin.downloads > 0 && (
-                          <span className="flex items-center gap-1" title="Downloads">
-                            <Download className="w-3.5 h-3.5 text-muted-foreground" />
-                            {plugin.downloads.toLocaleString()}
-                          </span>
-                        )}
-                        {plugin.rating > 0 && (
-                          <span title="Rating">⭐ {plugin.rating.toFixed(1)}/5</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => handleInstall(plugin)}
-                    disabled={isInstalling !== null}
-                    className="w-full md:w-auto px-4 py-2 bg-muted hover:bg-indigo-500/10 border border-border hover:border-indigo-500/30 text-foreground-muted hover:text-indigo-400 rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
-                  >
-                    {isInstalling === plugin.id ? (
-                      <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Installing...</>
-                    ) : (
-                      <><Download className="w-4 h-4 mr-2" /> Install</>
-                    )}
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+              <p className="line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{plugin.description || "No description provided by the provider."}</p>
+              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground"><span className="inline-flex items-center gap-1"><Download className="h-3.5 w-3.5" /> {plugin.downloads.toLocaleString()}</span>{plugin.rating !== null && <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-amber-300" /> {plugin.rating.toFixed(1)}</span>}<span className={plugin.compatibility === "known" ? "text-emerald-300" : "text-amber-300"}>{plugin.compatibility === "known" ? "Compatibility data available" : "Compatibility to verify"}</span>{plugin.platforms.slice(0, 3).map((platform) => <span key={platform} className="rounded-md bg-muted px-2 py-0.5">{platform}</span>)}</div>
+              <div className="mt-auto flex items-center justify-between gap-3 border-t border-border-subtle pt-3"><span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Server className="h-3.5 w-3.5" /> Current server</span><button type="button" onClick={() => void handleInstall(plugin)} disabled={isInstalling !== null} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-50">{isInstalling === plugin.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} {isInstalling === plugin.id ? "Installing" : "Install"}</button></div>
+            </article>
+          ))}
         </div>
       </div>
-      
-      {isInstalling !== null && <LoadingOverlay message="Installing plugin..." />}
+      {isInstalling !== null && <LoadingOverlay message="Validating and installing plugin..." />}
     </div>
   );
 }
