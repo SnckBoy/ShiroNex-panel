@@ -188,6 +188,7 @@ router.put("/settings", async (req, res) => {
   const { 
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme,
+    appearance, accent, backgroundEffect, reducedMotion,
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId,
     firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId 
   } = req.body;
@@ -222,6 +223,10 @@ router.put("/settings", async (req, res) => {
   if (enableLoginAnimation !== undefined) settings.enableLoginAnimation = enableLoginAnimation;
   if (enableRegistration !== undefined) settings.enableRegistration = enableRegistration;
   if (theme !== undefined) settings.theme = theme;
+  if (appearance !== undefined && ["dark", "light", "system"].includes(appearance)) settings.appearance = appearance;
+  if (accent !== undefined && ["purple", "indigo", "blue", "cyan", "emerald", "pink", "red"].includes(accent)) settings.accent = accent;
+  if (backgroundEffect !== undefined && ["none", "aurora", "animated-gradient", "grid", "nebula", "starfield"].includes(backgroundEffect)) settings.backgroundEffect = backgroundEffect;
+  if (reducedMotion !== undefined) settings.reducedMotion = Boolean(reducedMotion);
   if (enableGoogleLogin !== undefined) settings.enableGoogleLogin = enableGoogleLogin;
   if (firebaseApiKey !== undefined) settings.firebaseApiKey = firebaseApiKey;
   if (firebaseAuthDomain !== undefined) settings.firebaseAuthDomain = firebaseAuthDomain;
