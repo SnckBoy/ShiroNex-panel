@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useSettings } from '../context/SettingsContext';
+import PulseRing from '../components/PulseRing';
 
 const SparklineChart = ({ data, color }: { data: number[]; color: string }) => {
   const max = Math.max(...data);
@@ -18,35 +19,11 @@ const SparklineChart = ({ data, color }: { data: number[]; color: string }) => {
     const y = 100 - (((value - min) / range) * 80 + 10);
     return `${x},${y}`;
   }).join(' ');
-  const gradientId = `gradient-${color.replace('#', '')}`;
-
   return (
     <svg className="snx-metric-sparkline" preserveAspectRatio="none" viewBox="0 0 100 100" aria-hidden="true">
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.42" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={`0,100 ${points} 100,100`} fill={`url(#${gradientId})`} />
+      <polygon points={`0,100 ${points} 100,100`} fill={color} fillOpacity="0.08" />
       <polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-  );
-};
-
-const ProgressBar = ({ value, max = 100, colorClass = 'bg-violet-500' }: { value: number; max?: number; colorClass?: string }) => {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
-  const tone = colorClass.includes('rose') ? 'snx-progress-fill--danger' : colorClass.includes('amber') ? 'snx-progress-fill--warning' : colorClass.includes('violet') ? 'snx-progress-fill--purple' : 'snx-progress-fill--cyan';
-
-  return (
-    <div className="snx-progress-track" role="progressbar" aria-valuenow={Math.round(percentage)} aria-valuemin={0} aria-valuemax={100}>
-      <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: `${percentage}%` }}
-        transition={{ duration: 0.9, ease: 'easeOut' }}
-        className={`snx-progress-fill ${tone}`}
-      />
-    </div>
   );
 };
 
@@ -97,6 +74,8 @@ export default function Dashboard() {
 
   const STATS = useMemo(() => {
     const defaultData = Array(20).fill(0);
+    const activeContainers = stats?.activeContainers || 0;
+    const totalContainers = stats?.totalContainers || 0;
     const cpuData = statsHistory?.length ? statsHistory.map((item: any) => item.cpuUsage || 0) : defaultData;
     const ramData = statsHistory?.length ? statsHistory.map((item: any) => item.ramUsage || 0) : defaultData;
     const containersData = statsHistory?.length ? statsHistory.map((item: any) => item.activeContainers || 0) : defaultData;
@@ -105,10 +84,10 @@ export default function Dashboard() {
     while (containersData.length < 2) containersData.unshift(0);
 
     return [
-      { id: 'cpu', label: 'Cluster CPU', value: `${(stats?.cpuUsage || 0).toFixed(1)}%`, data: cpuData, color: '#00F2FE', icon: Cpu, caption: 'aggregate load' },
-      { id: 'ram', label: 'Memory Usage', value: `${(stats?.ramUsage || 0).toFixed(1)}%`, data: ramData, color: '#9B51E0', icon: HardDrive, caption: 'allocated capacity' },
-      { id: 'net', label: 'Servers Online', value: `${(Array.isArray(realServers) ? realServers : []).filter((server) => server.status === 'online').length} / ${(Array.isArray(realServers) ? realServers : []).length}`, data: defaultData, color: '#00FF87', icon: Activity, caption: 'healthy instances' },
-      { id: 'nodes', label: 'Active Containers', value: `${stats?.activeContainers || 0} / ${stats?.totalContainers || 0}`, data: containersData, color: '#f6c453', icon: Zap, caption: 'running workloads' },
+      { id: 'cpu', label: 'Cluster CPU', value: `${(stats?.cpuUsage || 0).toFixed(1)}%`, ringValue: stats?.cpuUsage || 0, data: cpuData, color: '#00F2FE', icon: Cpu, caption: 'aggregate load' },
+      { id: 'ram', label: 'Memory Usage', value: `${(stats?.ramUsage || 0).toFixed(1)}%`, ringValue: stats?.ramUsage || 0, data: ramData, color: '#9B51E0', icon: HardDrive, caption: 'allocated capacity' },
+      { id: 'net', label: 'Servers Online', value: `${(Array.isArray(realServers) ? realServers : []).filter((server) => server.status === 'online').length} / ${(Array.isArray(realServers) ? realServers : []).length}`, ringValue: (Array.isArray(realServers) && realServers.length) ? (realServers.filter((server) => server.status === 'online').length / realServers.length) * 100 : 0, data: defaultData, color: '#00FF87', icon: Activity, caption: 'healthy instances' },
+      { id: 'nodes', label: 'Active Containers', value: `${activeContainers} / ${totalContainers}`, ringValue: totalContainers ? (activeContainers / totalContainers) * 100 : 0, data: containersData, color: '#f6c453', icon: Zap, caption: 'running workloads' },
     ];
   }, [stats, statsHistory, realServers]);
 
@@ -181,7 +160,7 @@ export default function Dashboard() {
                     <p className="snx-metric-value">{stat.value}</p>
                     <p className="snx-card-caption">{stat.caption}</p>
                   </div>
-                  <div className="snx-metric-icon" style={{ color: stat.color, ['--snx-icon-color' as string]: stat.color }}><Icon className="h-4 w-4" /></div>
+                  <div className="snx-metric-card-tools"><PulseRing value={stat.ringValue} size={50} label={stat.label} /><div className="snx-metric-icon" style={{ color: stat.color, ['--snx-icon-color' as string]: stat.color }}><Icon className="h-4 w-4" /></div></div>
                 </div>
                 <div className="snx-metric-chart"><SparklineChart data={stat.data} color={stat.color} /></div>
               </motion.article>
@@ -226,9 +205,6 @@ export default function Dashboard() {
 }
 
 const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => {
-  const cpuColor = server.cpu > 80 ? 'bg-rose-500' : server.cpu > 50 ? 'bg-amber-500' : 'bg-cyan-500';
-  const ramColor = 'bg-violet-500';
-
   if (view === 'list') {
     return (
       <motion.article layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }} className="dashboard-server-card snx-server-row">
@@ -240,8 +216,8 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
           <div><span>Address</span><strong>{server.ip}</strong></div>
           <div><span>Runtime</span><strong>{server.type}</strong></div>
           <div className="snx-list-resources">
-            <div><span>CPU <b>{server.cpu}%</b></span><ProgressBar value={server.cpu} colorClass={cpuColor} /></div>
-            <div><span>RAM <b>{(server.ram.used / 1024).toFixed(1)}G</b></span><ProgressBar value={(server.ram.used / server.ram.total) * 100} colorClass={ramColor} /></div>
+            <div className="snx-resource-ring-row"><PulseRing value={server.cpu} size={44} label={`${server.name} CPU`} /><span><small>CPU</small><b>{Math.round(server.cpu)}%</b></span></div>
+            <div className="snx-resource-ring-row"><PulseRing value={(server.ram.used / server.ram.total) * 100} size={44} label={`${server.name} memory`} /><span><small>RAM</small><b>{(server.ram.used / 1024).toFixed(1)}G</b></span></div>
           </div>
         </div>
         <div className="snx-server-actions"><ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} /><ConsoleButton onOpenTerminal={onOpenTerminal} /></div>
@@ -259,8 +235,8 @@ const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => 
       <div className="snx-server-address"><Globe className="h-3.5 w-3.5" /><span>{server.ip}</span><button type="button" aria-label={`Open ${server.name} console`} onClick={onOpenTerminal}><Terminal className="h-3.5 w-3.5" /></button></div>
       <div className="snx-server-type"><Shield className="h-3.5 w-3.5" /> {server.type}</div>
       <div className="snx-resource-stack">
-        <div><div className="snx-resource-label"><span><Cpu className="h-3.5 w-3.5" /> CPU load</span><b>{server.cpu}%</b></div><ProgressBar value={server.cpu} colorClass={cpuColor} /></div>
-        <div><div className="snx-resource-label"><span><HardDrive className="h-3.5 w-3.5" /> Memory</span><b>{(server.ram.used / 1024).toFixed(1)} / {(server.ram.total / 1024).toFixed(1)} GB</b></div><ProgressBar value={(server.ram.used / server.ram.total) * 100} colorClass={ramColor} /></div>
+        <div className="snx-resource-ring-row"><PulseRing value={server.cpu} size={58} label={`${server.name} CPU`} /><div><span><Cpu className="h-3.5 w-3.5" /> CPU load</span><b>{Math.round(server.cpu)}%</b></div></div>
+        <div className="snx-resource-ring-row"><PulseRing value={(server.ram.used / server.ram.total) * 100} size={58} label={`${server.name} memory`} /><div><span><HardDrive className="h-3.5 w-3.5" /> Memory</span><b>{(server.ram.used / 1024).toFixed(1)} / {(server.ram.total / 1024).toFixed(1)} GB</b></div></div>
       </div>
       <div className="snx-server-card-footer"><span><Clock className="h-3.5 w-3.5" /> uptime {server.uptime}</span><div className="snx-server-actions"><ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} /><ConsoleButton onOpenTerminal={onOpenTerminal} /></div></div>
     </motion.article>
