@@ -52,7 +52,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative bg-transparent">
         
         {/* Top Header */}
-        <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-[#080711]/75 backdrop-blur-2xl border-b border-white/10 relative z-10 flex-shrink-0">
+        <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-card/70 backdrop-blur-2xl border-b border-border-subtle relative z-10 flex-shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 -ml-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
               <Menu size={20} />

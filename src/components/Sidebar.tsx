@@ -27,7 +27,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
   links.push({ name: "Settings", path: "/settings", icon: <Settings size={20} /> });
 
   return (
-    <div className={`h-full flex flex-col bg-[#070611]/80 backdrop-blur-2xl border-r border-white/10 transition-all duration-300 shironex-aurora z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+    <div className={`h-full flex flex-col bg-card/75 backdrop-blur-2xl border-r border-border-subtle transition-all duration-300 shironex-aurora z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       {/* Header */}
       <div className={`h-16 flex items-center border-b border-border-subtle ${isCollapsed ? 'justify-center' : 'px-6'} flex-shrink-0 relative`}>
         {onClose && (
@@ -72,15 +72,15 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
               {isActive && (
                 <motion.div 
                   layoutId="activeTabSidebar" 
-                  className="absolute inset-0 bg-white/[0.06] rounded-lg" 
+                  className="absolute inset-0 bg-muted rounded-lg" 
                   initial={false} 
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
               )}
               {isActive && !isCollapsed && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-gradient-to-b from-fuchsia-400 to-cyan-300 rounded-r-full shadow-[0_0_12px_rgba(217,70,239,.5)]" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[var(--accent-color)] rounded-r-full shadow-[0_0_12px_var(--accent-color)]" />
               )}
-              <div className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-muted-foreground group-hover:text-foreground'}`}>
+              <div className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-[var(--accent-color)]' : 'text-muted-foreground group-hover:text-foreground'}`}>
                 {link.icon}
               </div>
               {!isCollapsed && (
