@@ -50,7 +50,7 @@ export const setupOwner = async (req: Request, res: Response) => {
       return;
     }
     if (!isStrongPassword(password)) {
-      res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
+      res.status(400).json({ error: "Password must be 8-256 characters" });
       return;
     }
     if (password !== confirmPassword) {
@@ -95,7 +95,7 @@ export const register = async (req: Request, res: Response) => {
   }
 
   if (!isStrongPassword(password)) {
-    res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
+    res.status(400).json({ error: "Password must be 8-256 characters" });
     return;
   }
 
@@ -317,21 +317,45 @@ export const changePassword = async (req: Request, res: Response) => {
 };
 
 export const googleLogin = async (req: Request, res: Response) => {
-  const { email, googleId, name, photoURL } = req.body;
-
-  if (!email) {
-    res.status(400).json({ error: "Google email is required" });
-    return;
-  }
+  const { idToken, email, googleId, name, photoURL } = req.body;
 
   const settings = await readJSON("settings.json") || {};
   if (settings.enableGoogleLogin === false) {
     res.status(403).json({ error: "Google Login is disabled on this panel." });
     return;
   }
+  if (!settings.firebaseProjectId || typeof idToken !== "string" || !idToken) {
+    res.status(400).json({ error: "Google Login is not fully configured or the identity token is missing." });
+    return;
+  }
+
+  let verifiedIdentity: any;
+  try {
+    const verification = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    if (!verification.ok) throw new Error("Google token rejected");
+    verifiedIdentity = await verification.json();
+  } catch {
+    res.status(401).json({ error: "Google identity verification failed." });
+    return;
+  }
+
+  const verifiedEmail = typeof verifiedIdentity.email === "string" ? verifiedIdentity.email.toLowerCase() : "";
+  const verifiedGoogleId = typeof verifiedIdentity.sub === "string" ? verifiedIdentity.sub : "";
+  const audience = typeof verifiedIdentity.aud === "string" ? verifiedIdentity.aud : "";
+  if (!verifiedEmail || verifiedIdentity.email_verified !== "true" || !verifiedGoogleId || audience !== settings.firebaseProjectId) {
+    res.status(401).json({ error: "Google identity token is invalid for this panel." });
+    return;
+  }
+  if ((email && email.toLowerCase() !== verifiedEmail) || (googleId && googleId !== verifiedGoogleId)) {
+    res.status(401).json({ error: "Google identity did not match the supplied account." });
+    return;
+  }
+
+  const cleanEmail = verifiedEmail;
+  const cleanGoogleId = verifiedGoogleId;
 
   // Derive username from Gmail (e.g. jishnumondal32@gmail.com -> jishnumondal32)
-  const emailPrefix = email.split("@")[0].replace(/[^a-zA-Z0-9_.]/g, "");
+  const emailPrefix = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_.]/g, "");
   const baseUsername = emailPrefix || "user";
 
   const users = await readJSON("users.json") || [];
@@ -339,7 +363,7 @@ export const googleLogin = async (req: Request, res: Response) => {
     res.status(403).json({ error: "First-run setup is required. Create the Owner account at /setup.", setupRequired: true });
     return;
   }
-  let user = users.find((u: any) => (u.email && u.email.toLowerCase() === email.toLowerCase()) || (u.googleId && u.googleId === googleId) || (u.username && u.username.toLowerCase() === baseUsername.toLowerCase()));
+  let user = users.find((u: any) => (u.email && u.email.toLowerCase() === cleanEmail) || (u.googleId && u.googleId === cleanGoogleId) || (u.username && u.username.toLowerCase() === baseUsername.toLowerCase()));
 
   if (!user) {
     const role = "user";
@@ -348,8 +372,8 @@ export const googleLogin = async (req: Request, res: Response) => {
     user = {
       id: "google-user-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
       username: baseUsername,
-      email,
-      googleId,
+      email: cleanEmail,
+      googleId: cleanGoogleId,
       role,
       avatar: photoURL || "",
       passwordVersion: 0,
@@ -360,8 +384,8 @@ export const googleLogin = async (req: Request, res: Response) => {
   } else {
     // Link email & googleId if missing
     let updated = false;
-    if (!user.email) { user.email = email; updated = true; }
-    if (!user.googleId) { user.googleId = googleId; updated = true; }
+    if (!user.email) { user.email = cleanEmail; updated = true; }
+    if (!user.googleId) { user.googleId = cleanGoogleId; updated = true; }
     if (photoURL && !user.avatar) { user.avatar = photoURL; updated = true; }
     if (updated) {
       const { writeJSON } = await import("../services/db.js");
