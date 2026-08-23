@@ -21,6 +21,7 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import PlayerManager from "./PlayerManager";
 import PulseRing from "./PulseRing";
+import InfrastructureCore from "./InfrastructureCore";
 
 /* ═══════════════════════════════════════════════════════
    TYPES
@@ -745,7 +746,13 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   );
 
   const renderTelemetryPanel = () => (
-    <section className="qx-panel snx-console-surface snx-telemetry-panel rounded-[24px] relative overflow-hidden">
+    <div className="snx-server-core-dock">
+      <InfrastructureCore
+        servers={[{ id: serverId, name: String(server?.name ?? serverId), status: String(server?.status ?? "offline"), load: cpuPct }]}
+        size="compact"
+        label="Instance Core"
+      />
+      <section className="qx-panel snx-console-surface snx-telemetry-panel rounded-[24px] relative overflow-hidden">
       {/* header */}
       <div className="snx-panel-heading flex items-center justify-between px-4 pt-3.5 pb-1">
         <h2 className="qx-display text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
@@ -821,7 +828,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
         </div>
         <div className="snx-telemetry-cap shrink-0 xs:block">capped {Math.round(Math.min(100, Math.max(0, diskPct)))}%</div>
       </div>
-    </section>
+      </section>
+    </div>
   );
 
   const renderPlayerSection = () => (

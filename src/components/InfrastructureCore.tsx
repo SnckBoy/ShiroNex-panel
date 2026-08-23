@@ -1,0 +1,288 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import type {
+  BoxGeometry,
+  CanvasTexture,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+  Scene,
+  WebGLRenderer,
+} from "three";
+
+export type CoreHealth = "online" | "warning" | "offline";
+
+export type CoreServer = {
+  id: string | number;
+  name?: string;
+  status?: CoreHealth | string;
+  load?: number;
+};
+
+type InfrastructureCoreProps = {
+  servers: CoreServer[];
+  size?: "hero" | "compact";
+  label?: string;
+  className?: string;
+};
+
+type ThreeRuntime = typeof import("three");
+
+type BlockRecord = {
+  mesh: Mesh<BoxGeometry, MeshStandardMaterial>;
+  base: { x: number; y: number; z: number };
+  phase: number;
+  load: number;
+};
+
+const HEALTH_COLORS: Record<CoreHealth, number> = {
+  online: 0x3ddc84,
+  warning: 0xf5a623,
+  offline: 0xf2545b,
+};
+
+const CORE_GLOW = 0x4de8f0;
+
+function normalizeHealth(status?: string): CoreHealth {
+  if (status === "online" || status === "running" || status === "healthy") return "online";
+  if (status === "warning" || status === "degraded" || status === "starting") return "warning";
+  return "offline";
+}
+
+function clamp(value: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : 0));
+}
+
+function getFallbackReason() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "server";
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const saveData = Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
+  const lowMemory = typeof (navigator as Navigator & { deviceMemory?: number }).deviceMemory === "number"
+    && ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 2;
+  return reducedMotion ? "reduced-motion" : saveData ? "data-saver" : lowMemory ? "low-power" : "";
+}
+
+function createFallbackTexture(THREE: ThreeRuntime, color: number): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 32;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = `#${color.toString(16).padStart(6, "0")}`;
+    context.fillRect(0, 0, 32, 32);
+    context.fillStyle = "rgba(255,255,255,.18)";
+    context.fillRect(0, 0, 32, 3);
+    context.fillStyle = "rgba(0,0,0,.24)";
+    context.fillRect(0, 29, 32, 3);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+export function InfrastructureCore({ servers, size = "hero", label = "Infrastructure Core", className = "" }: InfrastructureCoreProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sceneHostRef = useRef<HTMLDivElement | null>(null);
+  const [fallbackReason, setFallbackReason] = useState<string>(() => getFallbackReason());
+  const [ready, setReady] = useState(false);
+
+  const visibleServers = useMemo(() => servers.slice(0, 24), [servers]);
+  const blockServers = visibleServers.length ? visibleServers : [{ id: "empty", name: "No servers", status: "offline", load: 0 }];
+
+  useEffect(() => {
+    const host = sceneHostRef.current;
+    const canvas = canvasRef.current;
+    if (!host || !canvas || fallbackReason) return;
+
+    let disposed = false;
+    let animationFrame = 0;
+    let renderer: WebGLRenderer | undefined;
+    let scene: Scene | undefined;
+    let camera: PerspectiveCamera | undefined;
+    let root: Group | undefined;
+    let blocks: BlockRecord[] = [];
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let rotationStartX = 0;
+    let rotationStartY = 0;
+    let dragging = false;
+    let bootStart = performance.now();
+
+    const resize = () => {
+      if (!renderer || !camera) return;
+      const bounds = host.getBoundingClientRect();
+      const width = Math.max(1, bounds.width);
+      const height = Math.max(1, bounds.height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, size === "hero" ? 1.5 : 1.25));
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!root) return;
+      dragging = true;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      rotationStartX = root.rotation.y;
+      rotationStartY = root.rotation.x;
+      canvas.setPointerCapture?.(event.pointerId);
+      canvas.classList.add("is-dragging");
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragging || !root) return;
+      root.rotation.y = rotationStartX + (event.clientX - dragStartX) * 0.008;
+      root.rotation.x = Math.max(-0.75, Math.min(0.75, rotationStartY + (event.clientY - dragStartY) * 0.006));
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      dragging = false;
+      canvas.releasePointerCapture?.(event.pointerId);
+      canvas.classList.remove("is-dragging");
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) cancelAnimationFrame(animationFrame);
+      else if (!disposed) animationFrame = requestAnimationFrame(render);
+    };
+
+    const render = (time: number) => {
+      if (disposed || !renderer || !scene || !camera || !root) return;
+      if (!document.hidden) {
+        if (!dragging) root.rotation.y += size === "hero" ? 0.0017 : 0.0022;
+        const bootProgress = Math.min(1, (time - bootStart) / 1250);
+        blocks.forEach((block, index) => {
+          const blockProgress = Math.max(0, Math.min(1, (bootProgress - index * 0.035) / 0.45));
+          block.mesh.scale.setScalar(Math.max(0.001, blockProgress));
+          block.mesh.position.y = block.base.y + (1 - blockProgress) * 0.65;
+          const pulse = 0.78 + Math.sin(time * 0.002 + block.phase) * 0.12 + block.load / 100 * 0.14;
+          block.mesh.material.emissiveIntensity = pulse;
+        });
+        renderer.render(scene, camera);
+        animationFrame = requestAnimationFrame(render);
+      }
+    };
+
+    const initialize = async () => {
+      try {
+        const THREE = await import("three");
+        if (disposed) return;
+        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "low-power" });
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(size === "hero" ? 28 : 32, 1, 0.1, 100);
+        camera.position.set(0, 0.2, size === "hero" ? 9.5 : 7.5);
+        root = new THREE.Group();
+        scene.add(root);
+        scene.add(new THREE.AmbientLight(0x9b93d8, 0.65));
+        const keyLight = new THREE.DirectionalLight(CORE_GLOW, 2.1);
+        keyLight.position.set(4, 5, 6);
+        scene.add(keyLight);
+        const rimLight = new THREE.PointLight(CORE_GLOW, 4, 14);
+        rimLight.position.set(-3, 1, 3);
+        scene.add(rimLight);
+
+        const geometry = new THREE.BoxGeometry(0.82, 0.82, 0.82);
+        const columns = size === "hero" ? 5 : 3;
+        const spacing = 1.05;
+        blockServers.forEach((server, index) => {
+          const health = normalizeHealth(server.status);
+          const color = HEALTH_COLORS[health];
+          const material = new THREE.MeshStandardMaterial({
+            color,
+            map: createFallbackTexture(THREE, color),
+            roughness: 0.34,
+            metalness: 0.2,
+            emissive: color,
+            emissiveIntensity: 0.85,
+            transparent: true,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          const layer = Math.floor(index / (columns * columns));
+          const layerIndex = index % (columns * columns);
+          const row = Math.floor(layerIndex / columns);
+          const column = layerIndex % columns;
+          const base = {
+            x: (column - (columns - 1) / 2) * spacing,
+            y: (row - (columns - 1) / 2) * spacing,
+            z: (layer - 1) * spacing * 0.9,
+          };
+          mesh.position.set(base.x, base.y + 0.7, base.z);
+          mesh.rotation.set(index * 0.17, index * 0.23, index * 0.11);
+          root?.add(mesh);
+          blocks.push({ mesh, base, phase: index * 0.67, load: clamp(server.load ?? (health === "online" ? 42 : health === "warning" ? 73 : 4)) });
+        });
+        resize();
+        setReady(true);
+        bootStart = performance.now();
+        animationFrame = requestAnimationFrame(render);
+      } catch {
+        if (!disposed) setFallbackReason("webgl-unavailable");
+      }
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    initialize();
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      blocks.forEach(({ mesh }) => {
+        mesh.geometry.dispose();
+        mesh.material.map?.dispose();
+        mesh.material.dispose();
+      });
+      renderer?.dispose();
+      renderer = undefined;
+    };
+  }, [blockServers, fallbackReason, size]);
+
+  const displayBlocks = visibleServers.length ? visibleServers : [{ id: "empty", name: "No servers", status: "offline", load: 0 }];
+
+  return (
+    <section className={`snx-core snx-core--${size} ${ready ? "is-ready" : ""} ${fallbackReason ? "is-fallback" : ""} ${className}`} aria-label={label}>
+      <div className="snx-core__header">
+        <div>
+          <span className="snx-eyebrow">THE CORE</span>
+          <h2>{label}</h2>
+        </div>
+        <span className="snx-core__mode">{fallbackReason ? "2D SAFE MODE" : "WEBGL CORE"}</span>
+      </div>
+      <div ref={sceneHostRef} className="snx-core__stage">
+        <div className="snx-core__halo" aria-hidden="true" />
+        <canvas ref={canvasRef} className="snx-core__canvas" aria-hidden="true" />
+        <div className="snx-core__fallback" aria-hidden={!fallbackReason}>
+          {displayBlocks.map((server, index) => {
+            const health = normalizeHealth(server.status);
+            const load = clamp(server.load ?? 0);
+            return <span key={server.id} className={`snx-core__fallback-block snx-core__fallback-block--${health}`} style={{ "--core-index": index, "--core-load": load } as CSSProperties} title={`${server.name ?? "Server"}: ${health}`} />;
+          })}
+        </div>
+        <div className="snx-core__hint">Drag to rotate · one block per server</div>
+      </div>
+      <div className="snx-core__legend" aria-label="Core health legend">
+        <span><i className="snx-health-dot snx-health-dot--online" /> Online</span>
+        <span><i className="snx-health-dot snx-health-dot--warning" /> Warning</span>
+        <span><i className="snx-health-dot snx-health-dot--offline" /> Offline</span>
+      </div>
+    </section>
+  );
+}
+
+export default InfrastructureCore;
