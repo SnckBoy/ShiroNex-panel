@@ -76,16 +76,35 @@ export const getServerStats = async (req: Request, res: Response) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
+  const limitRamBytes = server.ram ? Number(server.ram) * 1024 * 1024 * 1024 : null;
+  const limitDiskBytes = server.disk ? Number(server.disk) * 1024 * 1024 * 1024 : null;
   if (server.containerId) {
     const stats = await getContainerStats(server.containerId, server.nodeId);
     res.json({
       ...stats,
-      limitRam: server.ram ? server.ram * 1024 : 1024,
-      limitCpu: server.cpu || 100,
-      limitDisk: server.disk || 10
+      timestamp: stats?.timestamp ?? Date.now(),
+      limitRamBytes,
+      limitDiskBytes,
+      limitCpu: server.cpu ? Number(server.cpu) : null,
+      // Legacy fields remain for older clients; new clients use the byte fields above.
+      limitRam: server.ram ? Number(server.ram) * 1024 : null,
+      limitDisk: server.disk ? Number(server.disk) : null,
     });
   } else {
-    res.json({ cpu: 0, ram: 0, disk: 0, limitRam: server.ram ? server.ram * 1024 : 1024, limitCpu: server.cpu || 100, limitDisk: server.disk || 10 });
+    res.json({
+      available: false,
+      timestamp: Date.now(),
+      cpu: null,
+      ram: null,
+      disk: null,
+      networkRxBytes: null,
+      networkTxBytes: null,
+      limitRamBytes,
+      limitDiskBytes,
+      limitCpu: server.cpu ? Number(server.cpu) : null,
+      limitRam: server.ram ? Number(server.ram) * 1024 : null,
+      limitDisk: server.disk ? Number(server.disk) : null,
+    });
   }
 };
 
