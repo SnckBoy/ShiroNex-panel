@@ -26,6 +26,7 @@ import { SettingsProvider, useSettings } from "./context/SettingsContext";
 import { GlobalBackground } from "./components/GlobalBackground";
 import { SystemUpdateListener } from "./components/SystemUpdateListener";
 import { TutorialOverlay } from "./components/TutorialOverlay";
+import CoreCheckpoint from "./pages/CoreCheckpoint";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading, setupRequired } = useAuth();
@@ -63,6 +64,7 @@ const AnimatedRoutes = () => {
       >
         <Routes location={location}>
           <Route path="/setup" element={<Setup />} />
+          <Route path="/core-checkpoint" element={<CoreCheckpoint />} />
           <Route path="/login" element={<PublicAuthRoute><Login /></PublicAuthRoute>} />
           <Route path="/register" element={<PublicAuthRoute><Register /></PublicAuthRoute>} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
