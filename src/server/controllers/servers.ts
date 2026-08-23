@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import { readJSON, writeJSON } from "../services/db.js";
-import { createServerContainer, startContainer, stopContainer, restartContainer, deleteContainer, getContainerStatus, sendContainerCommand, attachContainerSocket, getContainerStats } from "../services/docker.js";
+import { createServerContainer, startContainer, stopContainer, restartContainer, deleteContainer, getContainerStatus, sendContainerCommand, attachContainerSocket, getContainerStats, SUPPORTED_JAVA_VERSIONS } from "../services/docker.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import crypto from "crypto";
 import fs from "fs-extra";
@@ -94,7 +94,11 @@ export const createServer = async (req: Request, res: Response) => {
   if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
-  const { name, ram, port, version, theme, cpu, disk, owner, ipAlias, type, nodeId, allocationId } = req.body;
+  const { name, ram, port, version, theme, cpu, disk, owner, ipAlias, type, nodeId, allocationId, javaVersion } = req.body;
+  const normalizedJavaVersion = javaVersion ? String(javaVersion) : "";
+  if (normalizedJavaVersion && !SUPPORTED_JAVA_VERSIONS.includes(normalizedJavaVersion as typeof SUPPORTED_JAVA_VERSIONS[number])) {
+    return res.status(400).json({ error: `Unsupported Java version. Choose one of: ${SUPPORTED_JAVA_VERSIONS.join(", ")}` });
+  }
   if (!name || !ram || !port) {
     res.status(400).json({ error: "Missing required fields (name, ram, port)" });
     return;
@@ -121,6 +125,7 @@ export const createServer = async (req: Request, res: Response) => {
     nodeId: nodeId || "local",
     type: type || "PAPER",
     version: version || "1.21.1",
+    javaVersion: normalizedJavaVersion || "",
     theme: theme || "default",
     status: "installing",
     createdAt: new Date().toISOString(),
@@ -358,10 +363,14 @@ export const sendCommand = async (req: Request, res: Response) => {
 export const changeServerVersion = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { version, type } = req.body;
+    const { version, type, javaVersion } = req.body;
     const user = (req as any).user;
+    const normalizedJavaVersion = javaVersion ? String(javaVersion) : "";
     
     if (!version) return res.status(400).json({ error: "Version is required" });
+    if (normalizedJavaVersion && !SUPPORTED_JAVA_VERSIONS.includes(normalizedJavaVersion as typeof SUPPORTED_JAVA_VERSIONS[number])) {
+      return res.status(400).json({ error: `Unsupported Java version. Choose one of: ${SUPPORTED_JAVA_VERSIONS.join(", ")}` });
+    }
     
     let servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
@@ -406,6 +415,7 @@ export const changeServerVersion = async (req: Request, res: Response) => {
     if (type) {
       server.type = type;
     }
+    server.javaVersion = normalizedJavaVersion;
     // Recreate container with new version env
     const newContainerId = await createServerContainer(server);
     server.containerId = newContainerId;
@@ -416,6 +426,40 @@ export const changeServerVersion = async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("Change version error", err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+export const changeJavaVersion = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const requested = String(req.body?.javaVersion || "");
+    const user = (req as any).user;
+    if (!SUPPORTED_JAVA_VERSIONS.includes(requested as typeof SUPPORTED_JAVA_VERSIONS[number])) {
+      return res.status(400).json({ error: `Unsupported Java version. Choose one of: ${SUPPORTED_JAVA_VERSIONS.join(", ")}` });
+    }
+
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((candidate: any) => candidate.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+    if (!canManageServer(req, server)) return res.status(403).json({ error: "Only admins, owners, or the server owner can change Java" });
+    if (String(server.javaVersion || "") === requested) return res.json({ success: true, javaVersion: requested, unchanged: true });
+
+    if (server.containerId) {
+      const status = await getContainerStatus(server.containerId, server.nodeId);
+      if (status?.State?.Running) {
+        return res.status(400).json({ error: "Server must be stopped before changing Java. Please stop the server first." });
+      }
+      await deleteContainer(server.containerId, server.nodeId);
+    }
+
+    server.javaVersion = requested;
+    server.containerId = await createServerContainer(server);
+    await writeJSON("servers.json", servers);
+    await audit("server.java_version_changed", req, { serverId: id, javaVersion: requested });
+    res.json({ success: true, javaVersion: requested, containerId: server.containerId });
+  } catch (err: any) {
+    console.error("Change Java version error", err);
+    res.status(500).json({ error: err.message || "Failed to change Java version" });
   }
 };
 
