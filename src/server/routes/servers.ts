@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
+import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, unzipFile, zipFiles, installPlugin, installMod, importModpack, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -45,6 +45,7 @@ router.post("/:id/command", sendCommand);
 router.get("/:id/files", getFiles);
 router.get("/:id/files/download", downloadFile);
 router.post("/:id/files/upload", upload.single("file"), uploadFile);
+router.post("/:id/modpacks/import", upload.single("archive"), importModpack);
 router.post("/:id/files/rename", renameFile);
 router.post("/:id/files/save", saveFileContent);
 router.post("/:id/files/create", createFile);
