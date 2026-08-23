@@ -1,5 +1,5 @@
 import express from "express";
-import { getVersions } from "../services/docker.js";
+import { getVersions, SUPPORTED_JAVA_VERSIONS } from "../services/docker.js";
 import { requireAuth } from "../middleware/auth.js";
 import os from "os";
 import { exec } from "child_process";
@@ -17,6 +17,10 @@ router.get("/versions", async (req, res) => {
   const type = (req.query.type as string) || "PAPER";
   const versions = await getVersions(type);
   res.json(versions);
+});
+
+router.get("/java-versions", (_req, res) => {
+  res.json(SUPPORTED_JAVA_VERSIONS);
 });
 
 // Deprecated endpoint for backward compatibility
