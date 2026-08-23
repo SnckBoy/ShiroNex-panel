@@ -370,6 +370,14 @@ diagnostics() {
   printf 'Ports:\n'; ss -ltnp 2>/dev/null | grep -E ":($PANEL_PORT|80|443|$NODE_PORT)\b" || true
 }
 
+manage_users() {
+  require_root
+  [[ -d "$APP_DIR" && -f "$APP_DIR/package.json" ]] || fail "Install the ShiroNex panel before managing users."
+  command -v npx >/dev/null 2>&1 || fail "npm/npx is required. Install the panel first."
+  cd "$APP_DIR"
+  npx --no-install tsx scripts/createuser.ts
+}
+
 update_all() {
   require_root
   backup
@@ -435,6 +443,7 @@ menu() {
 [8] Diagnostics
 [9] Uninstall
 [10] System Information
+[11] Create / Update Users
 [0] Exit
 EOF
   local option
@@ -450,6 +459,7 @@ EOF
     8) diagnostics ;;
     9) uninstall_all ;;
     10) system_info ;;
+    11) manage_users ;;
     0) exit 0 ;;
     *) warn "Invalid option" ;;
   esac
@@ -469,9 +479,10 @@ main() {
     diagnostics) diagnostics ;;
     uninstall) uninstall_all ;;
     info|system-info) system_info ;;
+    users|user|create-user) manage_users ;;
     menu) menu ;;
     -h|--help)
-      echo "Usage: sudo bash install.sh [panel|docker|node|both|ssl|update|repair|backup|diagnostics|uninstall|info]"
+      echo "Usage: sudo bash install.sh [panel|docker|node|both|ssl|update|repair|backup|diagnostics|uninstall|info|users]"
       ;;
     *) fail "Unknown action: $1" ;;
   esac

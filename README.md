@@ -10,7 +10,7 @@ On a fresh supported Ubuntu 22.04 or 24.04 VPS, run:
 curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash
 ```
 
-The installer opens a menu with panel, node, panel-plus-node, update, repair, uninstall, and system-information actions. After the panel starts, a fresh installation redirects to `/setup` to create the first Owner account. Non-interactive modes are also available:
+The installer opens a menu with panel, node, panel-plus-node, update, repair, uninstall, system information, and **Create / Update Users** actions. After the panel starts, a fresh installation redirects to `/setup` to create the first Owner account. Non-interactive modes are also available:
 
 ```bash
 sudo bash install.sh panel
@@ -19,11 +19,16 @@ sudo bash install.sh both
 sudo bash install.sh update
 sudo bash install.sh repair
 sudo bash install.sh uninstall
+sudo bash install.sh users
 ```
 
 After installation, the management command is available as `sudo shironex`. Use `sudo shironex --help` for panel/node service controls, logs, updates, repairs, backups, and health information.
 
-For a panel-only VPS, select **Install ShiroNex Panel**. For a separate node-only VPS, select **Install ShiroNex Node** or use the node command generated in the panel under **Nodes → Create Node**. On the first visit to a fresh panel, open `/setup` and create the Owner account with a unique username, email, and strong password. `/setup` closes permanently as soon as the first user is written; the panel then uses `/login`. There is no default password and passwords are never printed to installer logs. The **Panel + Node** option installs the panel first and then asks for node credentials; if credentials are not supplied, it prints the safe generated node-registration workflow instead of inventing credentials. It is designed so one panel can manage **many independent VPS nodes**, each running Docker containers locally.
+For a panel-only VPS, select **Install ShiroNex Panel**. For a separate node-only VPS, select **Install ShiroNex Node** or use the node command generated in the panel under **Nodes → Create Node**. On the first visit to a fresh panel, open `/setup` and create the Owner account with a unique username, email, and password of at least 8 characters. `/setup` closes permanently as soon as the first user is written; the panel then uses `/login`. There is no default password and passwords are never printed to installer logs. Run the installer again and choose option 11, or run `sudo bash /opt/shironex-panel/install.sh users`, to create or update multiple Owner, Admin, and User accounts; the first account is forced to Owner. The **Panel + Node** option installs the panel first and then asks for node credentials; if credentials are not supplied, it prints the safe generated node-registration workflow instead of inventing credentials. It is designed so one panel can manage **many independent VPS nodes**, each running Docker containers locally.
+
+## Login options
+
+ShiroNex supports ordinary username/password login with a simple 8-256 character minimum-length rule. Passwords are still bcrypt-hashed and no password is printed or stored in plain text. Optional **Sign in with Google** is available on the production login page after enabling Google Login and entering the Firebase web-app settings in the Owner Settings page. Firebase Google Authentication must be enabled and the panel hostname must be added to Firebase Authorized domains. The browser sends a Firebase ID token and the backend verifies it with Google before accepting the login. Google sign-in creates normal User accounts; it does not replace the first Owner setup.
 
 ## Architecture
 

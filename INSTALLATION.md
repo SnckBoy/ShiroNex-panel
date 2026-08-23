@@ -90,11 +90,31 @@ Open the panel in your browser at `http://PANEL_IP:6767` or through your HTTPS d
 https://panel.example.com/setup
 ```
 
-Create the first account with a username, email, and password. The password must be at least 12 characters and contain uppercase, lowercase, numeric, and special characters. ShiroNex hashes the password with bcrypt and creates the account with the `Owner` role. The setup endpoint is one-time: after the first user is written, `/setup` redirects to `/login` and cannot create another account.
+Create the first account with a username, email, and password. The password only needs to be 8-256 characters; uppercase, lowercase, numbers, and special symbols are not required. ShiroNex hashes the password with bcrypt and creates the account with the `Owner` role. The setup endpoint is one-time: after the first user is written, `/setup` redirects to `/login` and cannot create another account.
 
 After setup, sign in at `/login`. The Owner can manage users, nodes, servers, backups, settings, API keys, and system administration. Normal users can only access the resources assigned to them and cannot access Owner/admin endpoints.
 
-### 4.4 Configure production secrets
+### 4.4 Create more users from the VPS installer
+
+Run the installer again:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash
+```
+
+Choose **[11] Create / Update Users**. The helper asks for a username, optional email, password, confirmation, and role. The first account created when the database is empty is automatically forced to `Owner`; later accounts may be `Owner`, `Admin`, or `User`. You can create several accounts in one session by answering `y` when asked whether to create another user. Passwords are never printed in installer output and are stored as bcrypt hashes.
+
+The same operation can be invoked directly after panel installation:
+
+```bash
+sudo bash /opt/shironex-panel/install.sh users
+```
+
+### 4.5 Optional Google sign-in
+
+Google sign-in is optional and is shown on the production login page only after an administrator enables Google Login and fills in the Firebase web-app settings in ShiroNex Settings. Configure a Firebase project with Google Authentication enabled and add the panel hostname to Firebase **Authorized domains**. Enter the Firebase API key, Auth Domain, Project ID, Storage Bucket, Messaging Sender ID, and App ID in the panel settings, enable Google Login, save, and restart the panel if requested. The browser obtains a Firebase ID token, and the panel verifies that token with Google before creating or signing in the linked normal user account. Google sign-in does not bypass the first-run Owner setup: create the first Owner at `/setup` or with installer option 11 first.
+
+### 4.6 Configure production secrets
 
 Open the environment file:
 
