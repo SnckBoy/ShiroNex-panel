@@ -166,7 +166,9 @@ const ServerCard = memo(function ServerCard({
             : "bg-gradient-to-r from-transparent via-white/15 to-transparent"
         }`}
       />
-      {/* 6.2 · Header */}
+      {/* 6.2 · Lightweight Core echo: All Servers stays 2D for fast scanning */}
+      <span className={`snx-core-echo snx-core-echo--${online ? "online" : isSuspended ? "offline" : "warning"}`} aria-hidden="true" />
+      {/* 6.3 · Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3.5">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-muted text-muted-foreground transition-colors group-hover:border-border-strong group-hover:text-foreground">
