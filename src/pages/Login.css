@@ -172,7 +172,8 @@
 .login-button span { pointer-events: none; }
 .login-button:disabled,
 .google-button:disabled { opacity: .6; cursor: not-allowed; transform: none; }
-.login-button-arrow { margin-left: auto; padding-right: 1rem; font-size: 1.25rem; }
+.login-button-arrow { position: absolute; right: 1rem; padding: 0; font-size: 1.25rem; }
+.login-success { position: relative; margin-bottom: 1rem; padding: .8rem .9rem; color: #a7f3d0; border: 1px solid rgba(52,211,153,.35); border-radius: .75rem; background: rgba(6,78,59,.28); font-size: .82rem; line-height: 1.45; }
 .login-divider { display: flex; align-items: center; gap: .8rem; margin: 1.35rem 0; color: #64748b; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; }
 .login-divider::before,
 .login-divider::after { content: ''; height: 1px; flex: 1; background: rgba(148,163,184,.18); }

@@ -1,200 +1,155 @@
-// @ts-nocheck
 import React, { useState } from "react";
-import { LoadingOverlay } from "../components/LoadingOverlay";
-import { useSettings } from "../context/SettingsContext";
-import { useNavigate, Link } from "react-router-dom";
-import { Server, ArrowRight, Mail, Lock, User } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail, Server, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import axios from "axios";
-import { motion } from "framer-motion";
+import { Link, useNavigate } from "react-router-dom";
+import { useSettings } from "../context/SettingsContext";
+import "./Login.css";
 
 export default function Register() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { panelName, panelLogo, enableRegistration } = useSettings();
   const navigate = useNavigate();
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRegister = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError("");
     setSuccess("");
 
+    const cleanUsername = username.trim();
     if (enableRegistration === false) {
-      setError("User registration is currently disabled by administrator.");
+      setError("User registration is currently disabled by the panel administrator.");
       return;
     }
-
+    if (!cleanUsername || !password) {
+      setError("Enter a username and password to continue.");
+      return;
+    }
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Passwords do not match.");
       return;
     }
-
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError("Password must be at least 8 characters.");
       return;
     }
 
     setIsLoading(true);
     try {
-      await axios.post("/api/auth/register", { username, password, confirmPassword });
-      setSuccess("Account created successfully! Redirecting to sign in...");
-      setTimeout(() => navigate("/login"), 1500);
+      await axios.post("/api/auth/register", { username: cleanUsername, password, confirmPassword }, { timeout: 15000 });
+      setSuccess("Account created successfully. Redirecting to sign in…");
+      window.setTimeout(() => navigate("/login", { replace: true }), 1100);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Registration failed.");
+      setError(err.code === "ECONNABORTED" ? "The panel took too long to respond. Check that the service is running." : err.response?.data?.error || "Registration failed.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handlePointerMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
+    const y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
+    event.currentTarget.style.setProperty("--pointer-x", `${x * 12}px`);
+    event.currentTarget.style.setProperty("--pointer-y", `${y * 12}px`);
+  };
+
   return (
-    <div className="min-h-screen w-full flex bg-background text-foreground selection:bg-indigo-500/30">
-      {/* Left side - Visual */}
-      <div className="hidden lg:flex w-1/2 bg-card relative overflow-hidden items-center justify-center border-r border-border">
-        {/* Subtle background glow effect */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-full max-h-[800px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none" />
-        
-        <div className="relative z-10 max-w-lg p-12 text-right">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-8 ml-auto">
-            <Server className="w-8 h-8 text-indigo-400" />
-          </div>
-          <h2 className="text-4xl font-bold mb-6 leading-tight">Join the next generation of hosting.</h2>
-          <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-            Create an account to start deploying high-performance game servers instantly.
-          </p>
-          
-          <div className="grid grid-cols-2 gap-4 text-left">
-            <div className="p-4 rounded-xl bg-background/50 border border-border-subtle backdrop-blur-sm">
-              <div className="font-bold text-lg text-foreground mb-1">Instant Setup</div>
-              <div className="text-xs text-muted-foreground">Servers deploy in seconds</div>
-            </div>
-            <div className="p-4 rounded-xl bg-background/50 border border-border-subtle backdrop-blur-sm">
-              <div className="font-bold text-lg text-foreground mb-1">Full Control</div>
-              <div className="text-xs text-muted-foreground">Console, files & advanced config</div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Decorative elements */}
-        <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/5 blur-[100px] rounded-full" />
-        <div className="absolute left-0 bottom-0 w-64 h-64 bg-indigo-500/5 blur-[100px] rounded-full" />
+    <main className="login-shell register-shell" onMouseMove={handlePointerMove}>
+      <div className="login-wallpaper" aria-hidden="true">
+        <div className="login-orb login-orb-one" />
+        <div className="login-orb login-orb-two" />
+        <div className="login-orb login-orb-three" />
+        <div className="login-stars" />
+        <div className="login-grid" />
+        <div className="login-noise" />
       </div>
 
-      {/* Right side - Register Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 lg:p-24 relative z-10">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-sm mx-auto"
-        >
-          <div className="flex items-center gap-3 mb-10">
-            {panelLogo ? (
-              <img src={panelLogo} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
-            ) : (
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg">
-                <Server size={20} />
-              </div>
-            )}
-            <h1 className="text-2xl font-bold tracking-tight">{panelName}</h1>
+      <div className="login-layout register-layout">
+        <section className="login-brand" aria-label={`${panelName} introduction`}>
+          <div className="brand-kicker"><span className="brand-kicker-dot" /> SHIRONEX CONTROL PLANE</div>
+          <div className="brand-heading">
+            <div className="brand-logo">
+              {panelLogo ? <img src={panelLogo} alt="" /> : <Server size={28} strokeWidth={1.8} />}
+            </div>
+            <div>
+              <h1>{panelName}</h1>
+              <p>Hosting infrastructure, beautifully controlled.</p>
+            </div>
+          </div>
+          <p className="brand-copy">Create your operator account and bring game servers, nodes, backups, and deployments into one calm command center.</p>
+          <div className="brand-highlights">
+            <div><ShieldCheck size={17} /><span>Secure by default</span></div>
+            <div><Sparkles size={17} /><span>Fast fleet visibility</span></div>
+            <div><Server size={17} /><span>Ready for every node</span></div>
+          </div>
+          <div className="brand-footer"><span className="status-pulse" /> Build your control plane</div>
+        </section>
+
+        <section className="login-card register-card" aria-labelledby="register-heading">
+          <div className="login-card-glow" aria-hidden="true" />
+          <div className="login-card-header">
+            <div className="login-mobile-mark"><Server size={18} /></div>
+            <span className="login-eyebrow">Create your access</span>
+            <h2 id="register-heading">Create an account</h2>
+            <p>Set up a secure account to start managing your infrastructure.</p>
           </div>
 
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold tracking-tight mb-2">Create account</h2>
-            <p className="text-muted-foreground">Sign up to start managing your servers.</p>
-          </div>
+          {error && <div className="login-error" role="alert">{error}</div>}
+          {success && <div className="login-success" role="status">{success}</div>}
 
-          <form onSubmit={handleRegister} className="space-y-5">
-            {enableRegistration === false && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm rounded-lg">
-                User registration is currently disabled by administrator.
+          <form onSubmit={handleRegister} className="login-form" noValidate aria-busy={isLoading}>
+            <label className="login-field">
+              <span>Username</span>
+              <div className="login-input-wrap">
+                <UserRound className="login-field-icon" size={18} />
+                <input type="text" name="username" required autoComplete="username" placeholder="Choose a username" value={username} onChange={(event) => setUsername(event.target.value)} />
               </div>
-            )}
-            {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg">
-                {error}
-              </div>
-            )}
-            {success && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-lg">
-                {success}
-              </div>
-            )}
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Username</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
-                <input 
-                  type="text" 
-                  name="username"
-                  required
-                  placeholder="Choose a username"
-                  className="w-full bg-card border border-border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl py-3 pl-10 pr-4 outline-none transition-all"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-            </div>
+            </label>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Password</label>
+            <label className="login-field">
+              <span>Email <em>(optional)</em></span>
+              <div className="login-input-wrap">
+                <Mail className="login-field-icon" size={18} />
+                <input type="email" name="email" autoComplete="email" placeholder="you@example.com" disabled aria-disabled="true" />
               </div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
-                <input 
-                  type="password" 
-                  name="password"
-                  required
-                  placeholder="••••••••"
-                  className="w-full bg-card border border-border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl py-3 pl-10 pr-4 outline-none transition-all"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
+            </label>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Confirm Password</label>
+            <label className="login-field">
+              <span>Password</span>
+              <div className="login-input-wrap">
+                <LockKeyhole className="login-field-icon" size={18} />
+                <input type={showPassword ? "text" : "password"} name="password" required minLength={8} autoComplete="new-password" placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
               </div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
-                <input 
-                  type="password" 
-                  name="confirmPassword"
-                  required
-                  placeholder="••••••••"
-                  className="w-full bg-card border border-border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl py-3 pl-10 pr-4 outline-none transition-all"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-              </div>
-            </div>
+            </label>
 
-            <button 
-              type="submit" 
-              disabled={isLoading || !!success || enableRegistration === false}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 mt-2"
-            >
-              {isLoading ? "Creating account..." : "Create account"}
-              {!isLoading && <ArrowRight size={18} />}
+            <label className="login-field">
+              <span>Confirm password</span>
+              <div className="login-input-wrap">
+                <LockKeyhole className="login-field-icon" size={18} />
+                <input type={showConfirmPassword ? "text" : "password"} name="confirmPassword" required minLength={8} autoComplete="new-password" placeholder="Repeat your password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+                <button type="button" className="password-toggle" onClick={() => setShowConfirmPassword((visible) => !visible)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"}>{showConfirmPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+              </div>
+            </label>
+
+            <button type="submit" className="login-button" disabled={isLoading || !!success || enableRegistration === false} aria-disabled={isLoading || !!success || enableRegistration === false}>
+              <span>{isLoading ? "Creating account…" : "Create account"}</span>
+              <span className="login-button-arrow" aria-hidden="true">→</span>
             </button>
           </form>
-          
-          <div className="mt-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Already have an account? <Link to="/login" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign in</Link>
-            </p>
-          </div>
-        </motion.div>
-      </div>
 
-      {isLoading && <LoadingOverlay message="Processing..." />}
-    </div>
+          <p className="login-register">Already have an account? <Link to="/login">Sign in</Link></p>
+          <p className="login-security-note"><ShieldCheck size={14} /> Passwords are securely protected.</p>
+        </section>
+      </div>
+    </main>
   );
 }
