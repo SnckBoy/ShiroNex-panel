@@ -60,11 +60,16 @@ const find = (id:string) => docker.getContainer(id);
 app.post("/v1/servers", auth, async (req,res) => {
  try {
   const d=req.body||{}, id=safeId(String(d.id||"")); const dir=safePath(id,"."); fs.mkdirSync(dir,{recursive:true,mode:0o750});
-  const image=String(d.image||"itzg/minecraft-server:latest");
+  const type=String(d.type||"PAPER").toUpperCase();
+  const javaVersion=String(d.javaVersion||"");
+  if(javaVersion && !["8","11","17","21","25"].includes(javaVersion)) throw new Error("Unsupported Java version");
+  const isProxy=["VELOCITY","BUNGEECORD","WATERFALL"].includes(type);
+  const defaultImage=isProxy ? "itzg/bungeecord:latest" : `itzg/minecraft-server:${javaVersion ? `java${javaVersion}` : "latest"}`;
+  const image=String(d.image||defaultImage);
   await new Promise<void>((resolve, reject) => docker.pull(image, (e: any, s: any) => e ? reject(e) : docker.modem.followProgress(s, (x: any) => x ? reject(x) : resolve())));
   const port=Number(d.port); if(!Number.isInteger(port)||port<1||port>65535) throw new Error("Invalid port");
   const ramGb=Number(d.ram||1); if(ramGb<=0) throw new Error("Invalid RAM");
-  const env=[`TYPE=${d.type||"PAPER"}`,`VERSION=${d.version||"latest"}`,"EULA=TRUE",`SERVER_PORT=${port}`,"ENABLE_RCON=true",`RCON_PASSWORD=${d.rconPassword||crypto.randomBytes(24).toString("hex")}`];
+  const env=[`TYPE=${type}`,`VERSION=${d.version||"latest"}`,"EULA=TRUE",`SERVER_PORT=${port}`,"ENABLE_RCON=true",`RCON_PASSWORD=${d.rconPassword||crypto.randomBytes(24).toString("hex")}`];
   const c=await docker.createContainer({Image:image,name:`shironex-${id}`,Labels:{"com.shironex.server":id,"com.shironex.managed":"true"},Env:env,Tty:true,OpenStdin:true,ExposedPorts:{[`${port}/tcp`]:{}},HostConfig:{Memory:Math.floor(ramGb*1024*1024*1024),NanoCpus:Math.max(1,Number(d.cpu||100))*10_000_000,PortBindings:{[`${port}/tcp`]:[{HostPort:String(port)}]},Binds:[`${dir}:/data`],RestartPolicy:{Name:"unless-stopped"}}});
   res.status(201).json({containerId:c.id});
  } catch(e:any){ res.status(500).json({error:e?.message||"Container creation failed"}); }
