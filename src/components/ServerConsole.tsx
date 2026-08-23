@@ -734,16 +734,17 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     else if (log.startsWith("[System")) { text = "text-emerald-300/75 italic"; rail = "bg-emerald-400/60"; }
     else if (log.includes("INFO")) { text = "text-sky-200/85"; rail = "bg-sky-500/50"; }
 
+    const lineSize = terminalFontSize === "small" ? "text-[10px]" : terminalFontSize === "large" ? "text-sm" : "text-[11px] sm:text-xs";
     return (
       <span className={`flex-1 flex items-stretch min-w-0`}>
         <span className={`w-[2px] sm:w-[3px] shrink-0 rounded-full mr-2 sm:mr-3 self-stretch ${rail}`} />
-          <span className={`${wrapLines ? "break-words whitespace-pre-wrap" : "whitespace-pre"} min-w-0 text-[11px] sm:text-xs leading-[1.6] ${text}`}>
+          <span className={`${wrapLines ? "break-words whitespace-pre-wrap" : "whitespace-pre"} min-w-0 ${lineSize} leading-[1.6] ${text}`}>
           {ts && <span className="text-foreground/25 mr-1.5 sm:mr-2 select-none font-mono text-[10px]">{ts[0]}</span>}
           {ts ? log.substring(ts[0].length) : log}
         </span>
       </span>
     );
-  }, [wrapLines]);
+  }, [wrapLines, terminalFontSize]);
 
   /* ── Derived ── */
   const cpuPct = useMemo(() => (stats.cpu / (stats.limitCpu || 1)) * 100, [stats.cpu, stats.limitCpu]);
@@ -954,7 +955,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                     <button type="button" className="qx-window-control" onClick={() => void copyLogs()} title={copied ? "Copied" : "Copy logs"} aria-label={copied ? "Logs copied" : "Copy logs"}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
                     <button type="button" className={`qx-window-control ${!wrapLines ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => setWrapLines((value) => !value)} title={wrapLines ? "Disable line wrapping" : "Enable line wrapping"} aria-label={wrapLines ? "Disable line wrapping" : "Enable line wrapping"}><WrapText size={12} /></button>
                     <button type="button" className="qx-window-control hidden sm:inline-flex" onClick={() => setTerminalFontSize((value) => value === "normal" ? "large" : value === "large" ? "small" : "normal")} title="Change terminal text size" aria-label="Change terminal text size"><Type size={12} /></button>
-                    <button type="button" className={`qx-window-control hidden sm:inline-flex ${isFloating ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => { setIsFloating((value) => !value); setWindowOffset({ x: 0, y: 0 }); }} title={isFloating ? "Dock console" : "Float console"} aria-label={isFloating ? "Dock console" : "Float console"}><Move size={12} /></button>
+                    <button type="button" className={`qx-window-control ${isFloating ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => { setIsFloating((value) => !value); setWindowOffset({ x: 0, y: 0 }); }} title={isFloating ? "Dock console" : "Float console"} aria-label={isFloating ? "Dock console" : "Float console"}><Move size={12} /></button>
                     <button type="button" className="qx-window-control" onClick={() => setIsMinimized((value) => !value)} title={isMinimized ? "Restore console" : "Minimize console"} aria-label={isMinimized ? "Restore console" : "Minimize console"}>{isMinimized ? <Maximize2 size={12} /> : <Minimize2 size={12} />}</button>
                   </div>
                 </div>
