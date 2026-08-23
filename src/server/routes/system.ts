@@ -115,7 +115,7 @@ router.post("/users", async (req, res) => {
   const cleanUsername = typeof username === "string" ? username.trim() : "";
   if (!cleanUsername || !password || !role) return res.status(400).json({ error: "Missing fields" });
   if (!/^[A-Za-z0-9_.-]{3,32}$/.test(cleanUsername)) return res.status(400).json({ error: "Invalid username" });
-  if (!isStrongPassword(password)) return res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
+  if (!isStrongPassword(password)) return res.status(400).json({ error: "Password must be 8-256 characters" });
   if (role !== "user" && role !== "admin") return res.status(400).json({ error: "Only user or admin roles can be created here" });
 
   const users = await readJSON("users.json") || [];
@@ -155,7 +155,7 @@ router.put("/users/:id/password", async (req, res) => {
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { newPassword } = req.body;
   if (!isStrongPassword(newPassword)) {
-    return res.status(400).json({ error: "Password must be 12-256 characters and include uppercase, lowercase, number, and special character" });
+    return res.status(400).json({ error: "Password must be 8-256 characters" });
   }
   
   const users = await readJSON("users.json") || [];
