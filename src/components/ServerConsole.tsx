@@ -20,6 +20,7 @@ import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import PlayerManager from "./PlayerManager";
+import PulseRing from "./PulseRing";
 
 /* ═══════════════════════════════════════════════════════
    TYPES
@@ -102,8 +103,8 @@ const STYLES = `
 @keyframes qx-blink      { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
 @keyframes qx-spin       { to { transform:rotate(360deg); } }
 @keyframes qx-scan       { 0% { top:-2px; } 100% { top:100%; } }
-@keyframes qx-drift      { 0% { background-position:0 0; } 100% { background-position:48px 48px; } }
-@keyframes qx-border-run { 0% { background-position:0% 50%; } 100% { background-position:200% 50%; } }
+@keyframes qx-drift      { from { opacity: .9; } to { opacity: .9; } }
+@keyframes qx-border-run { from { opacity: 1; } to { opacity: 1; } }
 @keyframes qx-dot-bounce { 0%,80%,100% { transform:scale(.5); opacity:.3; } 40% { transform:scale(1); opacity:1; } }
 @keyframes qx-tail-in    { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
 @keyframes qx-shimmer    { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
@@ -120,13 +121,7 @@ const STYLES = `
   border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px;
 }
 
-.qx-grid-bg {
-  background-image:
-    linear-gradient(rgba(52,211,153,.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(52,211,153,.028) 1px, transparent 1px);
-  background-size: 48px 48px;
-  animation: qx-drift 16s linear infinite;
-}
+.qx-grid-bg { background: transparent; animation: none; }
 
 .qx-spin-slow {
   transform-box: view-box;
@@ -141,26 +136,10 @@ const STYLES = `
 .qx-scroll::-webkit-scrollbar-thumb { background: rgba(52,211,153,.18); border-radius: 99px; }
 .qx-scroll::-webkit-scrollbar-thumb:hover { background: rgba(52,211,153,.38); }
 
-.qx-run {
-  position: relative;
-  overflow: hidden;
-  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
-  transition: all .25s cubic-bezier(.22,1,.36,1);
-}
-.qx-run::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(52,211,153,.14), transparent);
-  background-size: 200% 100%;
-  animation: qx-shimmer 2.8s linear infinite;
-  opacity: 0;
-  transition: opacity .3s;
-}
-.qx-run:hover::before { opacity: 1; }
-.qx-run:hover { box-shadow: 0 4px 22px -4px rgba(52,211,153,.4); }
-.qx-run:active { transform: scale(.96); }
-
-.qx-chamfer { clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.qx-run { position: relative; overflow: hidden; transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease; }
+.qx-run::before { display: none; }
+.qx-run:active { transform: scale(.975); }
+.qx-chamfer { clip-path: none; }
 
 .qx-input-shell:focus-within {
   border-color: rgba(52,211,153,.45);
@@ -784,7 +763,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       {/* CPU */}
       <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Dial pct={cpuPct} color="#34d399" glow="rgba(52,211,153,0.55)" icon={<Cpu size={15} />} armed={ready} />
+          <PulseRing value={cpuPct} size={76} strokeWidth={3.2} showValue={false} label="CPU Load" icon={<Cpu size={15} />} pulseKey={cpuHist.length} />
           <div className="min-w-0">
             <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
               CPU Load
@@ -806,7 +785,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       {/* RAM */}
       <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Dial pct={ramPct} color="#4ade80" glow="rgba(74,222,128,0.55)" icon={<MemoryStick size={15} />} armed={ready} />
+          <PulseRing value={ramPct} size={76} strokeWidth={3.2} showValue={false} label="Memory" icon={<MemoryStick size={15} />} pulseKey={ramHist.length} />
           <div className="min-w-0">
             <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
               Memory
@@ -828,7 +807,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       {/* DISK */}
       <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Dial pct={diskPct} color="#fbbf24" glow="rgba(251,191,36,0.55)" icon={<HardDrive size={15} />} armed={ready} />
+          <PulseRing value={diskPct} size={76} strokeWidth={3.2} showValue={false} label="Storage" icon={<HardDrive size={15} />} pulseKey={`${cpuHist.length}-${ramHist.length}`} />
           <div className="min-w-0">
             <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
               Storage
@@ -840,9 +819,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
             <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitDisk} GB</p>
           </div>
         </div>
-        <div className="shrink-0 xs:block">
-          <DriveBar pct={diskPct} />
-        </div>
+        <div className="snx-telemetry-cap shrink-0 xs:block">capped {Math.round(Math.min(100, Math.max(0, diskPct)))}%</div>
       </div>
     </section>
   );
