@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import axios from "axios";
 import { readJSON, writeJSON } from "../services/db.js";
 import { createServerContainer, startContainer, stopContainer, restartContainer, deleteContainer, getContainerStatus, sendContainerCommand, attachContainerSocket, getContainerStats } from "../services/docker.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
@@ -1033,6 +1034,61 @@ export const updateSuspend = async (req: Request, res: Response) => {
   }
 };
 
+
+export const installModpackFromMarketplace = async (req: Request, res: Response) => {
+  const { provider, projectId, gameVersion, loader } = req.body || {};
+  if (provider !== "modrinth") return res.status(400).json({ error: "Only the official Modrinth modpack provider is supported for remote imports" });
+  if (typeof projectId !== "string" || !/^[a-zA-Z0-9_-]{2,80}$/.test(projectId)) {
+    return res.status(400).json({ error: "Invalid modpack project id" });
+  }
+  if (!canManageServer(req, (req as any).server)) return res.status(403).json({ error: "Unauthorized" });
+
+  const tempDir = path.join(process.cwd(), ".data", "temp");
+  const tempPath = path.join(tempDir, `marketplace-${crypto.randomUUID()}.mrpack`);
+  try {
+    await fs.ensureDir(tempDir);
+    const versionResponse = await axios.get(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version`, {
+      params: {
+        loaders: typeof loader === "string" && loader.trim() ? JSON.stringify([loader.trim()]) : undefined,
+        game_versions: typeof gameVersion === "string" && gameVersion.trim() ? JSON.stringify([gameVersion.trim()]) : undefined,
+      },
+      timeout: 12_000,
+      headers: { "User-Agent": "ShiroNex-Panel/1.0 modpack-import" },
+    });
+    const versions = Array.isArray(versionResponse.data) ? versionResponse.data : [];
+    const version = versions.find((candidate: any) => Array.isArray(candidate.files) && candidate.files.length > 0);
+    const file = version?.files?.find((candidate: any) => candidate.primary) || version?.files?.[0];
+    const downloadUrl = typeof file?.url === "string" ? file.url : "";
+    if (!downloadUrl || !downloadUrl.startsWith("https://cdn.modrinth.com/")) {
+      return res.status(404).json({ error: "No safe Modrinth archive was found for this modpack" });
+    }
+
+    const response = await axios.get(downloadUrl, {
+      responseType: "stream",
+      timeout: 60_000,
+      maxContentLength: 512 * 1024 * 1024,
+      maxBodyLength: 512 * 1024 * 1024,
+      headers: { "User-Agent": "ShiroNex-Panel/1.0 modpack-import" },
+    });
+    const output = fs.createWriteStream(tempPath);
+    response.data.pipe(output);
+    await new Promise<void>((resolve, reject) => {
+      output.on("finish", resolve);
+      output.on("error", reject);
+      response.data.on("error", reject);
+    });
+
+    (req as any).file = {
+      path: tempPath,
+      originalname: path.basename(typeof file?.filename === "string" ? file.filename : `${projectId}.mrpack`),
+    };
+    return importModpack(req, res);
+  } catch (error: any) {
+    await fs.remove(tempPath).catch(() => undefined);
+    if (error?.response?.status === 404) return res.status(404).json({ error: "Modpack project or version not found" });
+    res.status(502).json({ error: "Could not download the modpack from Modrinth" });
+  }
+};
 
 export const importModpack = async (req: Request, res: Response) => {
   const { id } = req.params;
