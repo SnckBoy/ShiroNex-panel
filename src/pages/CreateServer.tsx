@@ -33,6 +33,8 @@ export default function CreateServer() {
     { id: "BUNGEECORD", name: "BungeeCord", desc: "Classic Proxy", icon: Network, color: "text-orange-400", bg: "bg-orange-400/10", border: "border-orange-400/20", activeRing: "ring-orange-500/50", glow: "to-orange-500/10" },
     { id: "FORGE", name: "Forge", desc: "Modded Minecraft", icon: Wrench, color: "text-stone-400", bg: "bg-stone-400/10", border: "border-stone-400/20", activeRing: "ring-stone-500/50", glow: "to-stone-500/10" },
     { id: "FABRIC", name: "Fabric", desc: "Lightweight Mods", icon: Feather, color: "text-amber-200", bg: "bg-amber-200/10", border: "border-amber-200/20", activeRing: "ring-amber-300/50", glow: "to-amber-300/10" },
+    { id: "PURPUR", name: "Purpur", desc: "Tuned Paper Fork", icon: Zap, color: "text-purple-300", bg: "bg-purple-400/10", border: "border-purple-400/20", activeRing: "ring-purple-500/50", glow: "to-purple-500/10" },
+    { id: "FOLIA", name: "Folia", desc: "Regionized Server", icon: Cpu, color: "text-emerald-300", bg: "bg-emerald-400/10", border: "border-emerald-400/20", activeRing: "ring-emerald-500/50", glow: "to-emerald-500/10" },
   ];
 
   const [name, setName] = useState("");
@@ -49,6 +51,8 @@ export default function CreateServer() {
   const [allocations, setAllocations] = useState<any[]>([]);
   const [allocationId, setAllocationId] = useState("");
   const [versions, setVersions] = useState<string[]>([]);
+  const [javaVersions, setJavaVersions] = useState<string[]>(["8", "11", "17", "21", "25"]);
+  const [javaVersion, setJavaVersion] = useState("");
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [createProgress, setCreateProgress] = useState(0);
@@ -81,6 +85,12 @@ export default function CreateServer() {
       if (res.data.length > 0) setVersion(res.data[0]);
     });
   }, [type]);
+
+  useEffect(() => {
+    axios.get("/api/system/java-versions").then((res) => {
+      if (Array.isArray(res.data)) setJavaVersions(res.data);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     axios
@@ -144,6 +154,7 @@ export default function CreateServer() {
         ipAlias,
         type,
         version,
+        ...(javaVersion ? { javaVersion } : {}),
       };
       if (owner) payload.owner = owner;
       if (nodeId) payload.nodeId = nodeId;
@@ -335,7 +346,7 @@ export default function CreateServer() {
             <label className="block text-sm font-medium text-foreground-muted mb-3 flex items-center">
               <Box className="w-4 h-4 mr-2 text-indigo-400" /> Server Software
             </label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
               {SOFTWARE_TYPES.map((soft) => {
                 const isSelected = type === soft.id;
                 const Icon = soft.icon;
@@ -379,6 +390,21 @@ export default function CreateServer() {
               searchPlaceholder="Search versions..."
               className="font-mono"
             />
+          </div>
+
+          <div className="md:col-span-2 relative z-10">
+            <label className="block text-sm font-medium text-foreground-muted mb-2 flex items-center">
+              <Zap className="w-4 h-4 mr-2 text-amber-400" /> Java Runtime
+            </label>
+            <select
+              value={javaVersion}
+              onChange={e => setJavaVersion(e.target.value)}
+              className="w-full bg-card border border-border focus:border-amber-500 rounded-xl px-4 py-3 text-foreground transition-all outline-none font-mono"
+            >
+              <option value="">Auto / image default</option>
+              {javaVersions.map(java => <option key={java} value={java}>Java {java}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground mt-2">Choose Java 8 for legacy Forge, or Java 17–25 for modern server versions.</p>
           </div>
 
           <div className="pt-4 border-t border-border-subtle md:col-span-2">
