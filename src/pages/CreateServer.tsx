@@ -140,7 +140,7 @@ export default function CreateServer() {
           clearInterval(interval);
           return 90;
         }
-        return prev + (Math.random() * 8 + 2);
+        return Math.min(90, prev + 5);
       });
     }, 300);
 

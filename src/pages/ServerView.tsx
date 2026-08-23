@@ -18,6 +18,8 @@ import ModpackManager from "../components/ModpackManager";
 import SubUsersManager from "../components/SubUsersManager";
 import ServerSFTP from "../components/ServerSFTP";
 import LiveTelemetry from "../components/LiveTelemetry";
+import ServerPlayers from "../components/ServerPlayers";
+import ServerOverview from "../components/ServerOverview";
 import PlayitTunnel from "./PlayitTunnel";
 import { Puzzle, Box, Network, PackageOpen } from "lucide-react";
 import { Settings, Globe } from "lucide-react";
@@ -109,8 +111,10 @@ export default function ServerView() {
   );
 
   const tabs: any[] = [
+    { name: "Overview", path: `/servers/${id}/overview`, exactPath: "overview", icon: <Activity size={18} /> },
     { name: "Terminal", path: `/servers/${id}`, exactPath: "", icon: <Terminal size={18} /> },
     { name: "Telemetry", path: `/servers/${id}/telemetry`, exactPath: "telemetry", icon: <Activity size={18} /> },
+    { name: "Players", path: `/servers/${id}/players`, exactPath: "players", icon: <Users size={18} /> },
     { name: "File Manager", path: `/servers/${id}/files`, exactPath: "files", icon: <Folder size={18} /> },
     { name: "SFTP Details", path: `/servers/${id}/sftp`, exactPath: "sftp", icon: <Network size={18} /> },
     { name: "Sub-Users", path: `/servers/${id}/subusers`, exactPath: "subusers", icon: <Users size={18} /> },
@@ -319,7 +323,9 @@ export default function ServerView() {
         <div className="flex-1 flex flex-col relative overflow-hidden bg-transparent min-h-0 snx-server-route-surface">
            <Routes>
              <Route path="/" element={<ServerConsole serverId={id!} server={server} />} />
+             <Route path="/overview" element={<ServerOverview serverId={id!} server={server} />} />
              <Route path="/telemetry" element={<LiveTelemetry serverId={id!} server={server} />} />
+             <Route path="/players" element={<ServerPlayers serverId={id!} />} />
              <Route path="/properties" element={<ServerProperties serverId={id!} />} />
              <Route path="/files" element={<FileManager serverId={id!} />} />
              <Route path="/sftp" element={<ServerSFTP serverId={id!} server={server} />} />
