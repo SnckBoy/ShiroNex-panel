@@ -9,6 +9,12 @@ import {
   Check,
   Trash2,
   ChevronDown,
+  Move,
+  Minimize2,
+  Maximize2,
+  WrapText,
+  Type,
+
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
@@ -162,7 +168,17 @@ const STYLES = `
 }
 
 .qx-telemetry-row { transition: background .25s ease; }
-.qx-telemetry-row:hover { background: rgba(255,255,255,.02); }
+  .qx-telemetry-row:hover { background: rgba(255,255,255,.02); }
+
+  .qx-console-floating { left: 50%; top: 50%; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); border-radius: 14px !important; border-color: rgba(52,211,153,.34) !important; box-shadow: 0 28px 90px rgba(0,0,0,.62), 0 0 0 1px rgba(52,211,153,.08) !important; }
+  .qx-console-minimized { height: auto !important; min-height: 0 !important; }
+  .qx-console-minimized .qx-console-body, .qx-console-minimized .qx-console-quick, .qx-console-minimized .qx-console-command { display: none !important; }
+  .qx-window-control { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: rgba(203,213,225,.68); background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); transition: color .15s ease, background .15s ease, border-color .15s ease, transform .15s ease; touch-action: manipulation; }
+  .qx-window-control:hover { color: #d1fae5; background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.3); }
+  .qx-window-control:active { transform: scale(.94); }
+  .qx-window-control:focus-visible { outline: 2px solid rgba(52,211,153,.8); outline-offset: 2px; }
+  .qx-console-minimized .qx-window-drag-handle { cursor: grab; }
+  @media (max-width: 640px) { .qx-console-floating { max-width: calc(100vw - 12px); max-height: calc(100svh - 12px); } .qx-window-control { width: 27px; height: 27px; } }
 `;
 
 /* ═══════════════════════════════════════════════════════
@@ -446,6 +462,12 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   const [mobileTab, setMobileTab] = useState<"console" | "players">("console");
   const [atBottom, setAtBottom] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [isFloating, setIsFloating] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [wrapLines, setWrapLines] = useState(true);
+  const [terminalFontSize, setTerminalFontSize] = useState<"small" | "normal" | "large">("normal");
+  const [windowOffset, setWindowOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -585,6 +607,36 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     setAtBottom(true);
   }, []);
 
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+    setAtBottom(true);
+  }, []);
+
+  const startDrag = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (!isFloating || (event.target as HTMLElement).closest("button")) return;
+    event.preventDefault();
+    dragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: windowOffset.x,
+      originY: windowOffset.y,
+    };
+    const onMove = (move: PointerEvent) => {
+      if (!dragRef.current) return;
+      setWindowOffset({
+        x: dragRef.current.originX + move.clientX - dragRef.current.startX,
+        y: dragRef.current.originY + move.clientY - dragRef.current.startY,
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp, { once: true });
+  }, [isFloating, windowOffset]);
+
   /* ── "/" focuses the command line ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -649,7 +701,19 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   /* ── Copy + clear ── */
   const copyLogs = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(logs.join("\n"));
+      const text = logs.join("\n");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch { /* clipboard unavailable */ }
@@ -673,13 +737,13 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     return (
       <span className={`flex-1 flex items-stretch min-w-0`}>
         <span className={`w-[2px] sm:w-[3px] shrink-0 rounded-full mr-2 sm:mr-3 self-stretch ${rail}`} />
-        <span className={`break-words whitespace-pre-wrap min-w-0 text-[11px] sm:text-xs leading-[1.6] ${text}`}>
+          <span className={`${wrapLines ? "break-words whitespace-pre-wrap" : "whitespace-pre"} min-w-0 text-[11px] sm:text-xs leading-[1.6] ${text}`}>
           {ts && <span className="text-foreground/25 mr-1.5 sm:mr-2 select-none font-mono text-[10px]">{ts[0]}</span>}
           {ts ? log.substring(ts[0].length) : log}
         </span>
       </span>
     );
-  }, []);
+  }, [wrapLines]);
 
   /* ── Derived ── */
   const cpuPct = useMemo(() => (stats.cpu / (stats.limitCpu || 1)) * 100, [stats.cpu, stats.limitCpu]);
@@ -852,14 +916,15 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
             <section
               className={`flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
                 ready ? "qx-enter-right" : "opacity-0"
-              }`}
+              } ${isFloating ? "qx-console-floating fixed z-[60] w-[min(92vw,980px)]" : ""} ${isMinimized ? "qx-console-minimized" : ""}`}
               style={{
                 animationDelay: "80ms",
                 boxShadow: "0 0 40px -15px rgba(0,0,0,0.5)",
+                transform: isFloating ? `translate3d(calc(-50% + ${windowOffset.x}px), calc(-50% + ${windowOffset.y}px), 0)` : undefined,
               }}
             >
               {/* ── Header ── */}
-              <header className="px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-border-subtle relative z-10">
+              <header className="qx-window-drag-handle px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-border-subtle relative z-10 cursor-default select-none" onPointerDown={startDrag}>
                 <div className="flex items-center gap-[7px] shrink-0">
                   {["bg-[#ff5f57]", "bg-[#febc2e]", "bg-[#28c840]"].map((c, i) => (
                     <span
@@ -881,11 +946,17 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="hidden sm:block">
-                    <Clock />
-                  </span>
+                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                  <span className="hidden lg:block"><Clock /></span>
                   <ConnPill live={connected} />
+                  <div className="flex items-center gap-1 ml-1 pl-1 border-l border-white/10">
+                    <button type="button" className="qx-window-control" onClick={clearLogs} title="Clear console" aria-label="Clear console"><Trash2 size={12} /></button>
+                    <button type="button" className="qx-window-control" onClick={() => void copyLogs()} title={copied ? "Copied" : "Copy logs"} aria-label={copied ? "Logs copied" : "Copy logs"}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
+                    <button type="button" className={`qx-window-control ${!wrapLines ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => setWrapLines((value) => !value)} title={wrapLines ? "Disable line wrapping" : "Enable line wrapping"} aria-label={wrapLines ? "Disable line wrapping" : "Enable line wrapping"}><WrapText size={12} /></button>
+                    <button type="button" className="qx-window-control hidden sm:inline-flex" onClick={() => setTerminalFontSize((value) => value === "normal" ? "large" : value === "large" ? "small" : "normal")} title="Change terminal text size" aria-label="Change terminal text size"><Type size={12} /></button>
+                    <button type="button" className={`qx-window-control hidden sm:inline-flex ${isFloating ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => { setIsFloating((value) => !value); setWindowOffset({ x: 0, y: 0 }); }} title={isFloating ? "Dock console" : "Float console"} aria-label={isFloating ? "Dock console" : "Float console"}><Move size={12} /></button>
+                    <button type="button" className="qx-window-control" onClick={() => setIsMinimized((value) => !value)} title={isMinimized ? "Restore console" : "Minimize console"} aria-label={isMinimized ? "Restore console" : "Minimize console"}>{isMinimized ? <Maximize2 size={12} /> : <Minimize2 size={12} />}</button>
+                  </div>
                 </div>
               </header>
 
@@ -893,7 +964,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               <div
                 ref={bodyRef}
                 onScroll={onScroll}
-                className="flex-1 overflow-y-auto px-2.5 sm:px-4 md:px-5 py-3 sm:py-4 qx-mono text-[11px] md:text-xs leading-[1.7] qx-scroll relative z-10"
+                className={`qx-console-body flex-1 overflow-y-auto px-2.5 sm:px-4 md:px-5 py-3 sm:py-4 qx-mono ${terminalFontSize === "small" ? "text-[10px]" : terminalFontSize === "large" ? "text-sm" : "text-[11px] md:text-xs"} leading-[1.7] qx-scroll relative z-10`}
                 style={{ WebkitOverflowScrolling: "touch" }}
                 role="log"
                 aria-live="polite"
@@ -963,7 +1034,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               )}
 
               {/* ── Quick commands ── */}
-              <div className="px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10 border-t border-border-subtle bg-black/20 backdrop-blur-md">
+              <div className="qx-console-quick px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10 border-t border-border-subtle bg-black/20 backdrop-blur-md">
                 <span className="qx-display text-[8px] font-bold uppercase tracking-[0.22em] text-slate-500 shrink-0 mr-0.5 hidden xs:inline">
                   Quick
                 </span>
@@ -992,7 +1063,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               {/* ── Command bar ── */}
               <form
                 onSubmit={send}
-                className="p-2 sm:p-3 md:p-4 flex gap-2 relative z-10 bg-black/40 backdrop-blur-md border-t border-border-subtle"
+                className="qx-console-command p-2 sm:p-3 md:p-4 flex gap-2 relative z-10 bg-black/40 backdrop-blur-md border-t border-border-subtle"
               >
                 <div className="qx-input-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 border border-border bg-muted/80 transition-all duration-300 min-w-0">
                   <span className="text-emerald-400/80 qx-mono text-xs mr-1.5 sm:mr-3 select-none font-semibold whitespace-nowrap shrink-0">
