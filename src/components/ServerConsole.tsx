@@ -1,10 +1,6 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Terminal as XTerm,
-  Cpu,
-  MemoryStick,
-  HardDrive,
-  Layers,
   Copy,
   Check,
   Trash2,
@@ -19,26 +15,10 @@ import {
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
-import PlayerManager from "./PlayerManager";
-import PulseRing from "./PulseRing";
-import InfrastructureCore from "./InfrastructureCore";
 
 /* ═══════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════ */
-
-interface ServerStats {
-  cpu: number;
-  ram: number;
-  disk: number;
-  limitRam: number;
-  limitCpu: number;
-  limitDisk: number;
-}
-
-interface Player {
-  name: string;
-}
 
 interface ServerConsoleProps {
   serverId: string;
@@ -59,15 +39,6 @@ const MAX_LOG_LINES = 200;
 const STATS_POLL_MS = 5000;
 const SPARK_CAP = 40;
 const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
-
-const DEFAULT_STATS: ServerStats = {
-  cpu: 0,
-  ram: 0,
-  disk: 0,
-  limitRam: 1024,
-  limitCpu: 100,
-  limitDisk: 10,
-};
 
 const QUICK_COMMANDS = [
   { cmd: "list", label: "list" },
@@ -191,193 +162,6 @@ function Corners({ tone = "border-emerald-400/25" }: { tone?: string }) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   RADIAL DIAL — ticks, sweep arc, idle activity ring
-═══════════════════════════════════════════════════════ */
-
-function Dial({
-  pct,
-  color,
-  glow,
-  icon,
-  armed,
-}: {
-  pct: number;
-  color: string;
-  glow: string;
-  icon: React.ReactNode;
-  armed: boolean;
-}) {
-  const R = 30;
-  const C = 2 * Math.PI * R;
-  const off = armed ? C - (Math.min(pct, 100) / 100) * C : C;
-
-  return (
-    <div className="relative w-[76px] h-[76px] shrink-0">
-      <svg viewBox="0 0 84 84" className="w-full h-full">
-        {/* tick ring */}
-        {Array.from({ length: 20 }).map((_, i) => {
-          const a = (i / 20) * Math.PI * 2 - Math.PI / 2;
-          const major = i % 5 === 0;
-          const r1 = 37.5;
-          const r2 = major ? 41 : 39.5;
-          return (
-            <line
-              key={i}
-              x1={42 + Math.cos(a) * r1}
-              y1={42 + Math.sin(a) * r1}
-              x2={42 + Math.cos(a) * r2}
-              y2={42 + Math.sin(a) * r2}
-              stroke={major ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.07)"}
-              strokeWidth={major ? 1.2 : 1}
-            />
-          );
-        })}
-
-        {/* idle activity ring */}
-        <circle
-          cx="42" cy="42" r="22"
-          fill="none"
-          stroke={color}
-          strokeOpacity="0.14"
-          strokeWidth="1"
-          strokeDasharray="2 5"
-          className="qx-spin-slow"
-        />
-
-        {/* track + value arc */}
-        <g transform="rotate(-90 42 42)">
-          <circle cx="42" cy="42" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
-          <circle
-            cx="42" cy="42" r={R}
-            fill="none"
-            stroke={color}
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={C}
-            strokeDashoffset={off}
-            className="qx-arc"
-            style={{ filter: `drop-shadow(0 0 5px ${glow})` }}
-          />
-        </g>
-      </svg>
-
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span style={{ color, filter: `drop-shadow(0 0 4px ${glow})` }}>{icon}</span>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   ANIMATED NUMBER — eased rAF counter
-═══════════════════════════════════════════════════════ */
-
-function AnimNum({ value, decimals = 1 }: { value: number; decimals?: number }) {
-  const [disp, setDisp] = useState(value);
-  const prev = useRef(value);
-  const raf = useRef(0);
-
-  useEffect(() => {
-    const from = prev.current;
-    const to = value;
-    const dur = 700;
-    const t0 = performance.now();
-
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / dur, 1);
-      const e = 1 - Math.pow(1 - p, 4);
-      setDisp(from + (to - from) * e);
-      if (p < 1) raf.current = requestAnimationFrame(tick);
-      else prev.current = to;
-    };
-
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
-  }, [value]);
-
-  return <span className="tabular-nums">{disp.toFixed(decimals)}</span>;
-}
-
-/* ═══════════════════════════════════════════════════════
-   SPARKLINE — rolling history chart with live dot
-═══════════════════════════════════════════════════════ */
-
-function Spark({
-  data,
-  color,
-  max,
-  w = 118,
-  h = 28,
-}: {
-  data: number[];
-  color: string;
-  max: number;
-  w?: number;
-  h?: number;
-}) {
-  const gid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const step = w / (SPARK_CAP - 1);
-
-  const pts = data.map((v, i) => {
-    const x = i * step;
-    const y = h - 3 - (Math.min(Math.max(v, 0), max) / (max || 1)) * (h - 8);
-    return [x, y] as const;
-  });
-
-  if (pts.length < 2) {
-    return (
-      <div style={{ width: w, height: h }} className="flex items-end">
-        <div className="w-full border-b border-dashed border-border" />
-      </div>
-    );
-  }
-
-  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${h} L0,${h} Z`;
-  const [lx, ly] = pts[pts.length - 1];
-
-  return (
-    <svg width={w} height={h} className="overflow-visible">
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#${gid})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r="2" fill={color}>
-        <animate attributeName="opacity" values="1;0.3;1" dur="1.6s" repeatCount="indefinite" />
-      </circle>
-    </svg>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   SEGMENTED DRIVE BAR — storage bay indicator
-═══════════════════════════════════════════════════════ */
-
-function DriveBar({ pct }: { pct: number }) {
-  const SEGS = 14;
-  const filled = Math.round((Math.min(pct, 100) / 100) * SEGS);
-  return (
-    <div className="flex gap-[3px] w-[118px]">
-      {Array.from({ length: SEGS }).map((_, i) => (
-        <span
-          key={i}
-          className={`h-3.5 flex-1 rounded-[2px] transition-all duration-500 ${
-            i < filled
-              ? "bg-amber-400/85 shadow-[0_0_6px_rgba(251,191,36,0.45)]"
-              : "bg-white/[0.06]"
-          }`}
-          style={{ transitionDelay: `${i * 35}ms` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
    CONNECTION PILL + CLOCK
 ═══════════════════════════════════════════════════════ */
 
@@ -432,14 +216,9 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   const [command, setCommand] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [stats, setStats] = useState<ServerStats>(DEFAULT_STATS);
-  const [cpuHist, setCpuHist] = useState<number[]>([]);
-  const [ramHist, setRamHist] = useState<number[]>([]);
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(false);
   const [filter, setFilter] = useState<LogFilter>("all");
-  const [mobileTab, setMobileTab] = useState<"console" | "players">("console");
   const [atBottom, setAtBottom] = useState(true);
   const [copied, setCopied] = useState(false);
   const [isFloating, setIsFloating] = useState(false);
@@ -481,36 +260,6 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       if (typeof data !== "string") return;
       const lines = data.split(/\r?\n/).filter((l) => l.trim());
 
-      setPlayers((prev) => {
-        let u = [...prev];
-        let ch = false;
-        for (const raw of lines) {
-          const c = stripAnsi(raw);
-
-          const jm = c.match(/:\s+([a-zA-Z0-9_]{3,16})\s+joined the game/);
-          if (jm && !u.some((p) => p.name === jm[1])) {
-            u.push({ name: jm[1] });
-            ch = true;
-          }
-
-          const lm = c.match(/:\s+([a-zA-Z0-9_]{3,16})\s+left the game/);
-          if (lm) {
-            const f = u.filter((p) => p.name !== lm[1]);
-            if (f.length !== u.length) { u = f; ch = true; }
-          }
-
-          const pm = c.match(/players online:\s*(.*)/i);
-          if (pm) {
-            const s = pm[1].trim();
-            u = s
-              ? s.split(",").map((n) => n.trim()).filter(Boolean).map((name) => ({ name }))
-              : [];
-            ch = true;
-          }
-        }
-        return ch ? u : prev;
-      });
-
       setLogs((prev) => {
         const next = [...prev, ...lines];
         return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
@@ -538,34 +287,6 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       sockRef.current = null;
     };
   }, [serverId, token]);
-
-  /* ── Stats polling + history ── */
-  useEffect(() => {
-    if (!serverId) return;
-    let alive = true;
-
-    const pull = async () => {
-      try {
-        const { data } = await axios.get<ServerStats>(`/api/servers/${serverId}/stats`);
-        if (alive && data) {
-          setStats((p) => ({
-            cpu: data.cpu ?? p.cpu,
-            ram: data.ram ?? p.ram,
-            disk: data.disk ?? p.disk,
-            limitRam: data.limitRam ?? p.limitRam,
-            limitCpu: data.limitCpu ?? p.limitCpu,
-            limitDisk: data.limitDisk ?? p.limitDisk,
-          }));
-          setCpuHist((h) => [...h, data.cpu ?? 0].slice(-SPARK_CAP));
-          setRamHist((h) => [...h, data.ram ?? 0].slice(-SPARK_CAP));
-        }
-      } catch { /* retry next tick */ }
-    };
-
-    pull();
-    const iv = setInterval(pull, STATS_POLL_MS);
-    return () => { alive = false; clearInterval(iv); };
-  }, [serverId]);
 
   /* ── Auto-scroll (respects user scroll position) ── */
   useEffect(() => {
@@ -727,10 +448,6 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   }, [wrapLines, terminalFontSize]);
 
   /* ── Derived ── */
-  const cpuPct = useMemo(() => (stats.cpu / (stats.limitCpu || 1)) * 100, [stats.cpu, stats.limitCpu]);
-  const ramPct = useMemo(() => (stats.ram / (stats.limitRam || 1)) * 100, [stats.ram, stats.limitRam]);
-  const diskPct = useMemo(() => (stats.disk / (stats.limitDisk || 1)) * 100, [stats.disk, stats.limitDisk]);
-
   const counts = useMemo(() => {
     const c = { all: logs.length, info: 0, warn: 0, error: 0 };
     for (const l of logs) c[levelOf(l)]++;
@@ -745,108 +462,6 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     [logs, filter]
   );
 
-  const renderTelemetryPanel = () => (
-    <div className="snx-server-core-dock">
-      <InfrastructureCore
-        servers={[{ id: serverId, name: String(server?.name ?? serverId), status: String(server?.status ?? "offline"), load: cpuPct }]}
-        size="compact"
-        label="Instance Core"
-      />
-      <section className="qx-panel snx-console-surface snx-telemetry-panel rounded-[24px] relative overflow-hidden">
-      {/* header */}
-      <div className="snx-panel-heading flex items-center justify-between px-4 pt-3.5 pb-1">
-        <h2 className="qx-display text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
-          Telemetry & Usages
-        </h2>
-        <span className="flex items-center gap-1.5 qx-mono text-[9px] text-slate-500">
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"
-            style={{ animation: "qx-rec 2s ease-in-out infinite" }}
-          />
-          poll {STATS_POLL_MS / 1000}s
-        </span>
-      </div>
-
-      {/* CPU */}
-      <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <PulseRing value={cpuPct} size={76} strokeWidth={3.2} showValue={false} label="CPU Load" icon={<Cpu size={15} />} pulseKey={cpuHist.length} />
-          <div className="min-w-0">
-            <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
-              CPU Load
-            </p>
-            <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-emerald-300">
-              <AnimNum value={stats.cpu} />
-              <span className="text-[11px] text-emerald-300/50 ml-0.5">%</span>
-            </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitCpu}%</p>
-          </div>
-        </div>
-        <div className="shrink-0 xs:block">
-          <Spark data={cpuHist} color="#34d399" max={stats.limitCpu || 100} w={90} />
-        </div>
-      </div>
-
-      <div className="mx-4 border-t border-border-subtle" />
-
-      {/* RAM */}
-      <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <PulseRing value={ramPct} size={76} strokeWidth={3.2} showValue={false} label="Memory" icon={<MemoryStick size={15} />} pulseKey={ramHist.length} />
-          <div className="min-w-0">
-            <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
-              Memory
-            </p>
-            <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-emerald-300">
-              <AnimNum value={Math.floor(stats.ram)} decimals={0} />
-              <span className="text-[11px] text-emerald-300/50 ml-1">MB</span>
-            </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitRam} MB</p>
-          </div>
-        </div>
-        <div className="shrink-0 xs:block">
-          <Spark data={ramHist} color="#4ade80" max={stats.limitRam || 1024} w={90} />
-        </div>
-      </div>
-
-      <div className="mx-4 border-t border-border-subtle" />
-
-      {/* DISK */}
-      <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <PulseRing value={diskPct} size={76} strokeWidth={3.2} showValue={false} label="Storage" icon={<HardDrive size={15} />} pulseKey={`${cpuHist.length}-${ramHist.length}`} />
-          <div className="min-w-0">
-            <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
-              Storage
-            </p>
-            <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-amber-300">
-              <AnimNum value={stats.disk} />
-              <span className="text-[11px] text-amber-300/50 ml-1">GB</span>
-            </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitDisk} GB</p>
-          </div>
-        </div>
-        <div className="snx-telemetry-cap shrink-0 xs:block">capped {Math.round(Math.min(100, Math.max(0, diskPct)))}%</div>
-      </div>
-      </section>
-    </div>
-  );
-
-  const renderPlayerSection = () => (
-    <section
-      className={`flex-1 xl:min-h-0 qx-panel snx-console-surface snx-player-panel rounded-[24px] relative overflow-hidden flex flex-col ${
-        ready ? "qx-enter" : "opacity-0"
-      }`}
-      style={{ animationDelay: "300ms" }}
-    >
-      <div className="snx-panel-accent-line absolute top-0 inset-x-0 h-[1px]" />
-      <span className="absolute top-2.5 right-3 z-10 qx-mono text-[9px] px-2 py-0.5 rounded-sm bg-emerald-400/10 text-emerald-300 border border-emerald-400/20 tabular-nums">
-        {players.length} online
-      </span>
-      <PlayerManager serverId={serverId} players={players} />
-    </section>
-  );
-
   /* ═══════════════════════ RENDER ═══════════════════════ */
   return (
     <>
@@ -854,51 +469,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       <div className="absolute inset-0 overflow-y-auto text-foreground touch-auto overscroll-y-auto qx-scroll bg-transparent">
         <div className="relative flex flex-col xl:flex-row w-full max-w-[1440px] mx-auto min-h-full gap-3 md:gap-5 p-3 md:p-6 pb-20 md:pb-10">
           
-          {/* ═══════════ MOBILE VIEW SWITCHER (ONLY CONSOLE & PLAYERS) ═══════════ */}
-          <div className="snx-console-tabs flex xl:hidden items-center justify-between p-1 rounded-2xl shrink-0">
-            <button
-              type="button"
-              onClick={() => setMobileTab("console")}
-              className={`snx-console-tab flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                mobileTab === "console"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <XTerm size={15} />
-              <span>Console</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileTab("players")}
-              className={`snx-console-tab flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                mobileTab === "players"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Layers size={15} />
-              <span>Players ({players.length})</span>
-            </button>
-          </div>
-
-          {/* ═══════════ DESKTOP LEFT SIDEBAR — TELEMETRY + PLAYERS ═══════════ */}
-          <aside
-            className={`hidden xl:flex flex-col gap-5 xl:w-[380px] shrink-0 order-2 xl:order-1 ${
-              ready ? "qx-enter-left" : "opacity-0"
-            }`}
-          >
-            {renderTelemetryPanel()}
-            {renderPlayerSection()}
-          </aside>
-
-          {/* ═══════════ MOBILE PLAYERS TAB ═══════════ */}
-          <div className={`xl:hidden flex-col gap-4 order-2 ${mobileTab === "players" ? "flex" : "hidden"}`}>
-            {renderPlayerSection()}
-          </div>
-
-          {/* ═══════════ MAIN CONSOLE AREA (CONSOLE + TELEMETRY ON MOBILE SCROLL) ═══════════ */}
-          <div className={`flex-1 flex-col gap-4 order-1 xl:order-2 ${mobileTab === "console" ? "flex" : "hidden xl:flex"}`}>
+          {/* ═══════════ DEDICATED CONSOLE AREA ═══════════ */}
+          <div className="flex flex-1 flex-col gap-4 w-full">
             <section
               className={`snx-console-window flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
                 ready ? "qx-enter-right" : "opacity-0"
@@ -1085,10 +657,6 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               </form>
             </section>
 
-            {/* Telemetry/Usages panel placed directly below Console box on Mobile (scrollable) */}
-            <div className="xl:hidden">
-              {renderTelemetryPanel()}
-            </div>
           </div>
         </div>
       </div>
