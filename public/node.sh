@@ -5,12 +5,47 @@ while [[ $# -gt 0 ]]; do case "$1" in --panel) PANEL_URL="$2"; shift 2;; --node-
 [[ $EUID -eq 0 ]] || { echo "Run this installer as root."; exit 1; }
 [[ -n "$PANEL_URL" && -n "$NODE_ID" && -n "$SETUP_TOKEN" ]] || { echo "Missing --panel, --node-id or --setup-token"; exit 2; }
 . /etc/os-release
-case "$ID" in ubuntu|debian) ;; *) echo "ShiroNex Node supports Ubuntu/Debian in this installer."; exit 1;; esac
+case "$ID" in
+  ubuntu)
+    [[ -n "${VERSION_ID:-}" ]] || { echo "Could not detect the Ubuntu version." >&2; exit 1; }
+    if dpkg --compare-versions "$VERSION_ID" lt "20.04"; then
+      echo "This ShiroNex node requires Ubuntu 20.04 or newer. Detected: Ubuntu $VERSION_ID." >&2
+      exit 1
+    fi
+    ;;
+  debian)
+    ;;
+  *) echo "ShiroNex Node supports Ubuntu 20.04+ and Debian 11/12/13." >&2; exit 1;;
+esac
 apt-get update
-apt-get install -y ca-certificates curl gnupg
-if ! command -v node >/dev/null; then curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; apt-get install -y nodejs; fi
-if ! command -v docker >/dev/null; then curl -fsSL https://get.docker.com | sh; fi
-systemctl enable --now docker
+apt-get install -y ca-certificates curl gnupg xz-utils
+if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
+  if ! (curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs); then
+    echo "NodeSource has no package for this release; installing the official Node.js binary." >&2
+    case "$(dpkg --print-architecture)" in
+      amd64) NODE_ARCH=x64 ;;
+      arm64) NODE_ARCH=arm64 ;;
+      *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1;;
+    esac
+    NODE_VERSION=22.14.0
+    NODE_ROOT="/opt/nodejs/node-v${NODE_VERSION}-linux-${NODE_ARCH}"
+    rm -rf "$NODE_ROOT"
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -o /tmp/shironex-node.tar.xz
+    install -d -m 755 /opt/nodejs
+    tar -xJf /tmp/shironex-node.tar.xz -C /opt/nodejs
+    ln -sfn "$NODE_ROOT/bin/node" /usr/local/bin/node
+    ln -sfn "$NODE_ROOT/bin/npm" /usr/local/bin/npm
+    ln -sfn "$NODE_ROOT/bin/npx" /usr/local/bin/npx
+    rm -f /tmp/shironex-node.tar.xz
+  fi
+fi
+if ! command -v docker >/dev/null; then
+  if ! curl -fsSL https://get.docker.com | sh; then
+    apt-get update
+    apt-get install -y docker.io
+  fi
+fi
+command -v systemctl >/dev/null 2>&1 && systemctl enable --now docker || { echo "systemd is required to run the ShiroNex node service." >&2; exit 1; }
 install -d -m 700 /opt/shironex-node /etc/shironex-node /var/lib/shironex/servers
 curl -fsSL "$PANEL_URL/shironex-node.tar.gz" | tar -xzf - -C /opt/shironex-node
 cd /opt/shironex-node
