@@ -222,7 +222,7 @@ router.put("/settings", async (req, res) => {
   if (enableTutorial !== undefined) settings.enableTutorial = enableTutorial;
   if (enableLoginAnimation !== undefined) settings.enableLoginAnimation = enableLoginAnimation;
   if (enableRegistration !== undefined) settings.enableRegistration = enableRegistration;
-  if (theme !== undefined) settings.theme = theme;
+  if (theme !== undefined && ["aurora", "midnight", "nebula", "cyber", "royal-purple", "ocean", "emerald", "crimson"].includes(theme)) settings.theme = theme;
   if (appearance !== undefined && ["dark", "light", "system"].includes(appearance)) settings.appearance = appearance;
   if (accent !== undefined && ["purple", "indigo", "blue", "cyan", "emerald", "pink", "red"].includes(accent)) settings.accent = accent;
   if (backgroundEffect !== undefined && ["none", "aurora", "animated-gradient", "grid", "nebula", "starfield"].includes(backgroundEffect)) settings.backgroundEffect = backgroundEffect;
