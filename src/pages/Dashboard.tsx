@@ -9,6 +9,7 @@ import axios from 'axios';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useSettings } from '../context/SettingsContext';
 import PulseRing from '../components/PulseRing';
+import InfrastructureCore from '../components/InfrastructureCore';
 
 const SparklineChart = ({ data, color }: { data: number[]; color: string }) => {
   const max = Math.max(...data);
@@ -141,6 +142,14 @@ export default function Dashboard() {
             </div>
           </div>
         </header>
+
+        <section className="snx-dashboard-core-hero" aria-label="Infrastructure Core">
+          <InfrastructureCore
+            servers={servers.map((server) => ({ id: server.id, name: server.name, status: server.status, load: server.cpu }))}
+            size="hero"
+            label="Fleet Infrastructure Core"
+          />
+        </section>
 
         <section className="snx-metric-grid" aria-label="Cluster metrics">
           {STATS.map((stat, index) => {
