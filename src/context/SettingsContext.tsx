@@ -3,6 +3,7 @@ import axios from "axios";
 import { io } from "socket.io-client";
 
 const VALID_APPEARANCES = new Set(["dark", "light", "system"]);
+const VALID_THEMES = new Set(["aurora", "midnight", "nebula", "cyber", "royal-purple", "ocean", "emerald", "crimson"]);
 const VALID_ACCENTS = new Set(["purple", "indigo", "blue", "cyan", "emerald", "pink", "red"]);
 const VALID_BACKGROUND_EFFECTS = new Set(["none", "aurora", "animated-gradient", "grid", "nebula", "starfield"]);
 
@@ -43,15 +44,18 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
 
     const root = document.documentElement;
     const resolvedAppearance = appearance === "system" ? getSystemAppearance() : safeChoice(appearance, VALID_APPEARANCES, "dark");
+    const resolvedTheme = safeChoice(theme, VALID_THEMES, "aurora");
     const resolvedAccent = safeChoice(accent, VALID_ACCENTS, "purple");
     const resolvedBackground = safeChoice(backgroundEffect, VALID_BACKGROUND_EFFECTS, "aurora");
 
     root.dataset.theme = resolvedAppearance;
+    root.dataset.themePreset = resolvedTheme;
     root.dataset.appearance = resolvedAppearance;
     root.dataset.accent = resolvedAccent;
     root.dataset.backgroundEffect = resolvedBackground;
     root.classList.toggle("reduce-motion", reducedMotion);
-    root.style.colorScheme = resolvedAppearance;
+    root.style.setProperty("--accent-color", `var(--accent-${resolvedAccent})`);
+    root.style.colorScheme = resolvedAppearance === "light" ? "light" : "dark";
   };
 
   const fetchSettings = async () => {
@@ -66,7 +70,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (settings.enableTutorial !== undefined) setEnableTutorial(Boolean(settings.enableTutorial));
       if (settings.enableLoginAnimation !== undefined) setEnableLoginAnimation(Boolean(settings.enableLoginAnimation));
       if (settings.enableRegistration !== undefined) setEnableRegistration(Boolean(settings.enableRegistration));
-      if (settings.theme !== undefined) setTheme(String(settings.theme));
+      if (settings.theme !== undefined) setTheme(safeChoice(String(settings.theme), VALID_THEMES, "aurora"));
       if (settings.appearance !== undefined) setAppearance(safeChoice(settings.appearance, VALID_APPEARANCES, "dark"));
       if (settings.accent !== undefined) setAccent(safeChoice(settings.accent, VALID_ACCENTS, "purple"));
       if (settings.backgroundEffect !== undefined) setBackgroundEffect(safeChoice(settings.backgroundEffect, VALID_BACKGROUND_EFFECTS, "aurora"));
@@ -108,7 +112,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
 
   useEffect(() => {
     applyVisualSettings();
-  }, [appearance, accent, backgroundEffect, reducedMotion]);
+  }, [theme, appearance, accent, backgroundEffect, reducedMotion]);
 
   useEffect(() => {
     if (panelName) document.title = panelName;
