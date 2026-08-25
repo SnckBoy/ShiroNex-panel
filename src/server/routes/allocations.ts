@@ -31,19 +31,20 @@ router.get("/", async (_req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  const { nodeId, ipVersion = "IPv4" } = req.body || {};
-  const ip = validateAddress(req.body?.ip, String(ipVersion));
+  const nodeId = String(req.body?.nodeId || "").trim();
+  const ipVersion = String(req.body?.ipVersion || "IPv4");
+  const ip = validateAddress(req.body?.ip, ipVersion);
   const start = parsePort(req.body?.portStart);
   const end = parsePort(req.body?.portEnd ?? req.body?.portStart);
   if (!nodeId || !ip || !start || !end) {
     return res.status(400).json({ error: "nodeId, a valid IP, and ports from 1 to 65535 are required" });
   }
   if (start > end) return res.status(400).json({ error: "Start port must be less than or equal to end port" });
-  if (!(await findNode(String(nodeId)))) return res.status(400).json({ error: "Node not found" });
+  if (!(await findNode(nodeId))) return res.status(400).json({ error: "Node not found" });
 
   const allocations = await readJSON(file) || [];
   const overlaps = allocations.some((allocation: any) =>
-    allocation.nodeId === nodeId && allocation.ip === ip && Math.max(start, Number(allocation.portStart)) <= Math.min(end, Number(allocation.portEnd))
+    String(allocation.nodeId) === nodeId && allocation.ip === ip && Math.max(start, Number(allocation.portStart)) <= Math.min(end, Number(allocation.portEnd))
   );
   if (overlaps) return res.status(409).json({ error: "IP/port range overlaps an existing allocation" });
 
@@ -53,7 +54,7 @@ router.post("/", async (req: Request, res: Response) => {
     id: crypto.randomUUID(),
     nodeId: String(nodeId),
     ip,
-    ipVersion: String(ipVersion),
+    ipVersion,
     portStart: start,
     portEnd: end,
     assignedServerId: null,

@@ -46,7 +46,7 @@ export default function CreateServer() {
   const [type, setType] = useState<string>("PAPER");
   const [version, setVersion] = useState("1.21.1");
   const [owner, setOwner] = useState("");
-  const [nodeId, setNodeId] = useState("local");
+  const [nodeId, setNodeId] = useState("");
   const [nodes, setNodes] = useState<any[]>([]);
   const [allocations, setAllocations] = useState<any[]>([]);
   const [allocationId, setAllocationId] = useState("");
@@ -101,7 +101,11 @@ export default function CreateServer() {
       .catch(() => {});
 
     if (user?.role === "admin" || user?.role === "owner") {
-      axios.get("/api/nodes").then((res) => setNodes(res.data)).catch(() => {});
+      axios.get("/api/nodes").then((res) => {
+        const availableNodes = Array.isArray(res.data) ? res.data : [];
+        setNodes(availableNodes);
+        if (!nodeId) setNodeId(availableNodes.find((node: any) => node.status === "ONLINE")?.id || "");
+      }).catch(() => {});
       axios.get("/api/allocations").then((res) => setAllocations(res.data.filter((a:any)=>!a.assignedServerId))).catch(() => {});
     }
 
@@ -209,8 +213,8 @@ export default function CreateServer() {
           </div>
           
           <div className="grid md:grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium text-foreground-muted mb-2">Node</label><select value={nodeId} onChange={e=>{setNodeId(e.target.value);setAllocationId("");}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground"><option value="local">Local Node</option>{nodes.filter((n:any)=>n.status==="ONLINE").map((n:any)=><option key={n.id} value={n.id}>{n.name} ({n.status})</option>)}</select></div>
-            {nodeId!=="local"&&<div><label className="block text-sm font-medium text-foreground-muted mb-2">Allocation</label><select required value={allocationId} onChange={e=>{setAllocationId(e.target.value);const a=allocations.find((x:any)=>x.id===e.target.value);if(a)setPort(String(a.portStart));}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground"><option value="">Select allocation</option>{allocations.filter((a:any)=>a.nodeId===nodeId).map((a:any)=><option key={a.id} value={a.id}>{a.ip}:{a.portStart}{a.portEnd!==a.portStart?`-${a.portEnd}`:""}</option>)}</select></div>}
+            <div><label className="block text-sm font-medium text-foreground-muted mb-2">Node</label><select required value={nodeId} onChange={e=>{setNodeId(e.target.value);setAllocationId("");}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground"><option value="">Select an online node</option>{nodes.filter((n:any)=>n.status==="ONLINE").map((n:any)=><option key={n.id} value={n.id}>{n.name} · {n.fqdn || n.hostname || n.publicIp} · ONLINE</option>)}</select><p className="mt-1.5 text-xs text-muted-foreground">Nodes become selectable only after the daemon has registered and sent a heartbeat.</p></div>
+            <div><label className="block text-sm font-medium text-foreground-muted mb-2">Allocation</label><select required value={allocationId} onChange={e=>{setAllocationId(e.target.value);const a=allocations.find((x:any)=>x.id===e.target.value);if(a)setPort(String(a.portStart));}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground"><option value="">Select allocation</option>{allocations.filter((a:any)=>a.nodeId===nodeId && !a.assignedServerId).map((a:any)=><option key={a.id} value={a.id}>{a.ip}:{a.portStart}{a.portEnd!==a.portStart?`-${a.portEnd}`:""}</option>)}</select><p className="mt-1.5 text-xs text-muted-foreground">Create an allocation for this node before deploying a server.</p></div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-muted-subtle p-5 rounded-2xl border border-border-subtle">
@@ -334,7 +338,7 @@ export default function CreateServer() {
               <SearchableDropdown
                 value={nodeId}
                 onChange={setNodeId}
-                options={nodes.map(n => ({ value: n.id, label: n.name + " (" + n.ip + ")" }))}
+                options={nodes.filter((n: any) => n.status === "ONLINE").map((n: any) => ({ value: n.id, label: `${n.name} (${n.fqdn || n.hostname || n.publicIp || "address pending"})` }))}
                 placeholder="Select a node..."
                 searchPlaceholder="Search nodes..."
               />

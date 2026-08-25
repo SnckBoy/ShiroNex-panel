@@ -150,12 +150,16 @@ export const createServer = async (req: Request, res: Response) => {
     return;
   }
 
-  const requestedNodeId = String(nodeId || "local");
+  const requestedNodeId = String(nodeId || "");
+  if (!requestedNodeId) return res.status(400).json({ error: "Select a node before creating a server." });
   const nodes = await readJSON("nodes.json") || [];
-  const selectedNode = nodes.find((node: any) => node.id === requestedNodeId) || (requestedNodeId === "local" ? { id: "local", disabled: false } : null);
+  const selectedNode = nodes.find((node: any) => node.id === requestedNodeId);
   if (!selectedNode) return res.status(400).json({ error: "Node not found" });
   if (selectedNode.disabled) return res.status(409).json({ error: "Selected node is disabled" });
   if (selectedNode.maintenance) return res.status(409).json({ error: "Selected node is in maintenance mode; new server creation is blocked" });
+  const heartbeat = selectedNode.lastHeartbeat ? Date.parse(selectedNode.lastHeartbeat) : NaN;
+  const heartbeatTimeout = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
+  if (!Number.isFinite(heartbeat) || Date.now() - heartbeat > heartbeatTimeout) return res.status(409).json({ error: "Selected node is offline. Install the daemon and wait for an authenticated heartbeat before deploying." });
 
   const users = await readJSON("users.json") || [];
   const isStaff = user.role === "admin" || user.role === "owner";
@@ -168,8 +172,8 @@ export const createServer = async (req: Request, res: Response) => {
     selectedAllocation = allocations.find((a:any)=>a.id===String(allocationId) && a.nodeId===requestedNodeId && !a.assignedServerId);
     if (!selectedAllocation) return res.status(409).json({ error: "Allocation is unavailable or belongs to another node." });
     if (Number(port) < Number(selectedAllocation.portStart) || Number(port) > Number(selectedAllocation.portEnd)) return res.status(400).json({ error: "Server port is outside the selected allocation." });
-  } else if (requestedNodeId !== "local") {
-    return res.status(400).json({ error: "An allocation is required for a remote node." });
+  } else {
+    return res.status(400).json({ error: "An available allocation is required for every node." });
   }
   const id = crypto.randomUUID();
   const serverData = {
