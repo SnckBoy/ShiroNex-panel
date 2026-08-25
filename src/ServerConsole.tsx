@@ -20,12 +20,12 @@ import PlayerManager from "./PlayerManager";
 ═══════════════════════════════════════════════════════ */
 
 interface ServerStats {
-  cpu: number;
-  ram: number;
-  disk: number;
-  limitRam: number;
-  limitCpu: number;
-  limitDisk: number;
+  cpu: number | null;
+  ram: number | null;
+  disk: number | null;
+  limitRam: number | null;
+  limitCpu: number | null;
+  limitDisk: number | null;
 }
 
 interface Player {
@@ -53,13 +53,22 @@ const SPARK_CAP = 40;
 const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
 const DEFAULT_STATS: ServerStats = {
-  cpu: 0,
-  ram: 0,
-  disk: 0,
-  limitRam: 1024,
-  limitCpu: 100,
-  limitDisk: 10,
+  cpu: null,
+  ram: null,
+  disk: null,
+  limitRam: null,
+  limitCpu: null,
+  limitDisk: null,
 };
+
+const finiteNonNegative = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const metricOrPrevious = (value: unknown, previous: number | null): number | null => value === undefined ? previous : finiteNonNegative(value);
+const scaleFor = (limit: number | null, history: number[]) => limit !== null && limit > 0 ? limit : Math.max(1, ...history);
 
 const QUICK_COMMANDS = [
   { cmd: "list", label: "list" },
@@ -81,12 +90,28 @@ const FILTERS: { key: LogFilter; label: string }[] = [
 ═══════════════════════════════════════════════════════ */
 
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
 ::selection { background: rgba(52,211,153,0.25); }
 
-.qx-display { font-family: 'Chakra Petch', system-ui, sans-serif; }
-.qx-mono    { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
+.qx-display { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.qx-mono    { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace; }
+.qx-console-panel, .qx-console-panel input, .qx-console-panel button { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.qx-console-panel { isolation: isolate; }
+.qx-console-panel::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 1px 0 rgba(255,255,255,.045), inset 0 0 55px rgba(52,211,153,.018); }
+.qx-console-header { background: linear-gradient(180deg, rgba(15,23,42,.72), rgba(2,6,23,.35)); }
+.qx-console-title { letter-spacing: .24em; font-weight: 700; }
+.qx-log-body { scrollbar-gutter: stable; background: linear-gradient(90deg, rgba(2,6,23,.12), transparent 20%, transparent 80%, rgba(2,6,23,.12)); }
+.qx-log-line { border-left: 1px solid transparent; transition: background .16s ease, border-color .16s ease, transform .16s ease; }
+.qx-log-line:hover { border-left-color: rgba(52,211,153,.32); background: rgba(52,211,153,.045); }
+.qx-quick-bar { background: linear-gradient(180deg, rgba(2,6,23,.34), rgba(2,6,23,.62)); }
+.qx-command-chip { box-shadow: inset 0 1px 0 rgba(255,255,255,.045); }
+.qx-command-chip:focus-visible, .qx-execute:focus-visible { outline: 2px solid rgba(52,211,153,.75); outline-offset: 2px; }
+.qx-command-shell { background: rgba(2,6,23,.78); box-shadow: inset 0 1px 8px rgba(0,0,0,.25); }
+.qx-command-form { background: linear-gradient(180deg, rgba(2,6,23,.52), rgba(2,6,23,.82)); }
+.qx-execute { min-width: 7.2rem; box-shadow: 0 0 24px -14px rgba(52,211,153,.8); }
+@media (max-width: 640px) { .qx-console-title { letter-spacing: .16em; } .qx-execute { min-width: 5.5rem; } }
+@media (prefers-reduced-motion: reduce) { .qx-console-panel *, .qx-console-panel *::before, .qx-console-panel *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }
 
 @keyframes qx-fade-up    { from { opacity:0; transform:translateY(14px) scale(.985); } to { opacity:1; transform:none; } }
 @keyframes qx-slide-left { from { opacity:0; transform:translateX(-26px); }            to { opacity:1; transform:none; } }
@@ -205,7 +230,7 @@ function Dial({
   icon,
   armed,
 }: {
-  pct: number;
+  pct: number | null;
   color: string;
   glow: string;
   icon: React.ReactNode;
@@ -213,7 +238,8 @@ function Dial({
 }) {
   const R = 30;
   const C = 2 * Math.PI * R;
-  const off = armed ? C - (Math.min(pct, 100) / 100) * C : C;
+  const safePct = pct === null || !Number.isFinite(pct) ? 0 : Math.min(100, Math.max(0, pct));
+  const off = armed && pct !== null ? C - (safePct / 100) * C : C;
 
   return (
     <div className="relative w-[76px] h-[76px] shrink-0">
@@ -276,14 +302,20 @@ function Dial({
    ANIMATED NUMBER — eased rAF counter
 ═══════════════════════════════════════════════════════ */
 
-function AnimNum({ value, decimals = 1 }: { value: number; decimals?: number }) {
-  const [disp, setDisp] = useState(value);
-  const prev = useRef(value);
+function AnimNum({ value, decimals = 1 }: { value: number | null; decimals?: number }) {
+  const safeValue = value === null || !Number.isFinite(value) ? null : value;
+  const [disp, setDisp] = useState(safeValue ?? 0);
+  const prev = useRef(safeValue ?? 0);
   const raf = useRef(0);
 
   useEffect(() => {
+    if (safeValue === null) {
+      prev.current = 0;
+      setDisp(0);
+      return;
+    }
     const from = prev.current;
-    const to = value;
+    const to = safeValue;
     const dur = 700;
     const t0 = performance.now();
 
@@ -297,9 +329,9 @@ function AnimNum({ value, decimals = 1 }: { value: number; decimals?: number }) 
 
     raf.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf.current);
-  }, [value]);
+  }, [safeValue]);
 
-  return <span className="tabular-nums">{disp.toFixed(decimals)}</span>;
+  return <span className="tabular-nums">{safeValue === null ? "—" : disp.toFixed(decimals)}</span>;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -361,9 +393,10 @@ function Spark({
    SEGMENTED DRIVE BAR — storage bay indicator
 ═══════════════════════════════════════════════════════ */
 
-function DriveBar({ pct }: { pct: number }) {
+function DriveBar({ pct }: { pct: number | null }) {
   const SEGS = 14;
-  const filled = Math.round((Math.min(pct, 100) / 100) * SEGS);
+  const safePct = pct === null || !Number.isFinite(pct) ? 0 : Math.min(100, Math.max(0, pct));
+  const filled = Math.round((safePct / 100) * SEGS);
   return (
     <div className="flex gap-[3px] w-[118px]">
       {Array.from({ length: SEGS }).map((_, i) => (
@@ -547,15 +580,17 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
         const { data } = await axios.get<ServerStats>(`/api/servers/${serverId}/stats`);
         if (alive && data) {
           setStats((p) => ({
-            cpu: data.cpu ?? p.cpu,
-            ram: data.ram ?? p.ram,
-            disk: data.disk ?? p.disk,
-            limitRam: data.limitRam ?? p.limitRam,
-            limitCpu: data.limitCpu ?? p.limitCpu,
-            limitDisk: data.limitDisk ?? p.limitDisk,
+            cpu: metricOrPrevious(data.cpu, p.cpu),
+            ram: metricOrPrevious(data.ram, p.ram),
+            disk: metricOrPrevious(data.disk, p.disk),
+            limitRam: metricOrPrevious(data.limitRam, p.limitRam),
+            limitCpu: metricOrPrevious(data.limitCpu, p.limitCpu),
+            limitDisk: metricOrPrevious(data.limitDisk, p.limitDisk),
           }));
-          setCpuHist((h) => [...h, data.cpu ?? 0].slice(-SPARK_CAP));
-          setRamHist((h) => [...h, data.ram ?? 0].slice(-SPARK_CAP));
+          const nextCpu = finiteNonNegative(data.cpu);
+          const nextRam = finiteNonNegative(data.ram);
+          if (nextCpu !== null) setCpuHist((h) => [...h, nextCpu].slice(-SPARK_CAP));
+          if (nextRam !== null) setRamHist((h) => [...h, nextRam].slice(-SPARK_CAP));
         }
       } catch { /* retry next tick */ }
     };
@@ -673,8 +708,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     return (
       <span className={`flex-1 flex items-stretch min-w-0`}>
         <span className={`w-[2px] sm:w-[3px] shrink-0 rounded-full mr-2 sm:mr-3 self-stretch ${rail}`} />
-        <span className={`break-words whitespace-pre-wrap min-w-0 text-[11px] sm:text-xs leading-[1.6] ${text}`}>
-          {ts && <span className="text-foreground/25 mr-1.5 sm:mr-2 select-none font-mono text-[10px]">{ts[0]}</span>}
+        <span className={`break-words whitespace-pre-wrap min-w-0 text-xs sm:text-[13px] leading-[1.7] tracking-[-0.01em] ${text}`}>
+          {ts && <span className="text-foreground/25 mr-1.5 sm:mr-2 select-none font-mono text-[11px]">{ts[0]}</span>}
           {ts ? log.substring(ts[0].length) : log}
         </span>
       </span>
@@ -682,9 +717,9 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   }, []);
 
   /* ── Derived ── */
-  const cpuPct = useMemo(() => (stats.cpu / (stats.limitCpu || 1)) * 100, [stats.cpu, stats.limitCpu]);
-  const ramPct = useMemo(() => (stats.ram / (stats.limitRam || 1)) * 100, [stats.ram, stats.limitRam]);
-  const diskPct = useMemo(() => (stats.disk / (stats.limitDisk || 1)) * 100, [stats.disk, stats.limitDisk]);
+  const cpuPct = useMemo(() => stats.cpu === null ? null : stats.limitCpu !== null && stats.limitCpu > 0 ? Math.min(100, Math.max(0, (stats.cpu / stats.limitCpu) * 100)) : Math.min(100, Math.max(0, stats.cpu)), [stats.cpu, stats.limitCpu]);
+  const ramPct = useMemo(() => stats.ram === null || stats.limitRam === null || stats.limitRam <= 0 ? null : Math.min(100, Math.max(0, (stats.ram / stats.limitRam) * 100)), [stats.ram, stats.limitRam]);
+  const diskPct = useMemo(() => stats.disk === null || stats.limitDisk === null || stats.limitDisk <= 0 ? null : Math.min(100, Math.max(0, (stats.disk / stats.limitDisk) * 100)), [stats.disk, stats.limitDisk]);
 
   const counts = useMemo(() => {
     const c = { all: logs.length, info: 0, warn: 0, error: 0 };
@@ -705,7 +740,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       {/* header */}
       <div className="flex items-center justify-between px-4 pt-3.5 pb-1">
         <h2 className="qx-display text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
-          Telemetry & Usages
+Live Resource Usage
         </h2>
         <span className="flex items-center gap-1.5 qx-mono text-[9px] text-slate-500">
           <span
@@ -726,13 +761,13 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
             </p>
             <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-emerald-300">
               <AnimNum value={stats.cpu} />
-              <span className="text-[11px] text-emerald-300/50 ml-0.5">%</span>
+              {stats.cpu !== null && <span className="text-[11px] text-emerald-300/50 ml-0.5">%</span>}
             </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitCpu}%</p>
+            <p className="qx-mono text-[9px] text-slate-600 mt-1">{stats.limitCpu === null ? "observed usage" : `cap ${stats.limitCpu}%`}</p>
           </div>
         </div>
         <div className="shrink-0 xs:block">
-          <Spark data={cpuHist} color="#34d399" max={stats.limitCpu || 100} w={90} />
+          <Spark data={cpuHist} color="#34d399" max={scaleFor(stats.limitCpu, cpuHist)} w={90} />
         </div>
       </div>
 
@@ -747,14 +782,14 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               Memory
             </p>
             <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-emerald-300">
-              <AnimNum value={Math.floor(stats.ram)} decimals={0} />
-              <span className="text-[11px] text-emerald-300/50 ml-1">MB</span>
+              <AnimNum value={stats.ram === null ? null : Math.floor(stats.ram)} decimals={0} />
+              {stats.ram !== null && <span className="text-[11px] text-emerald-300/50 ml-1">MB</span>}
             </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitRam} MB</p>
+            <p className="qx-mono text-[9px] text-slate-600 mt-1">{stats.limitRam === null ? "limit unavailable" : `cap ${stats.limitRam} MB`}</p>
           </div>
         </div>
         <div className="shrink-0 xs:block">
-          <Spark data={ramHist} color="#4ade80" max={stats.limitRam || 1024} w={90} />
+          <Spark data={ramHist} color="#4ade80" max={scaleFor(stats.limitRam, ramHist)} w={90} />
         </div>
       </div>
 
@@ -770,9 +805,9 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
             </p>
             <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-amber-300">
               <AnimNum value={stats.disk} />
-              <span className="text-[11px] text-amber-300/50 ml-1">GB</span>
+              {stats.disk !== null && <span className="text-[11px] text-amber-300/50 ml-1">GB</span>}
             </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitDisk} GB</p>
+            <p className="qx-mono text-[9px] text-slate-600 mt-1">{stats.limitDisk === null ? "limit unavailable" : `cap ${stats.limitDisk} GB`}</p>
           </div>
         </div>
         <div className="shrink-0 xs:block">
@@ -848,9 +883,9 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
           </div>
 
           {/* ═══════════ MAIN CONSOLE AREA (CONSOLE + TELEMETRY ON MOBILE SCROLL) ═══════════ */}
-          <div className={`flex-1 flex-col gap-4 order-1 xl:order-2 ${mobileTab === "console" ? "flex" : "hidden xl:flex"}`}>
+          <div className={`flex-1 min-w-0 flex-col gap-4 order-1 xl:order-2 ${mobileTab === "console" ? "flex" : "hidden xl:flex"}`}>
             <section
-              className={`flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
+              className={`qx-console-panel flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
                 ready ? "qx-enter-right" : "opacity-0"
               }`}
               style={{
@@ -859,7 +894,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               }}
             >
               {/* ── Header ── */}
-              <header className="px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-border-subtle relative z-10">
+              <header className="qx-console-header px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-border-subtle relative z-10">
                 <div className="flex items-center gap-[7px] shrink-0">
                   {["bg-[#ff5f57]", "bg-[#febc2e]", "bg-[#28c840]"].map((c, i) => (
                     <span
@@ -872,10 +907,10 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                 <div className="flex items-center gap-2 min-w-0">
                   <XTerm size={13} className="text-emerald-400/80 shrink-0" />
                   <div className="min-w-0 text-center">
-                    <h1 className="qx-display text-[10px] sm:text-[11px] font-bold tracking-[0.2em] sm:tracking-[0.3em] text-slate-200 uppercase truncate">
+                    <h1 className="qx-display qx-console-title text-[11px] sm:text-xs text-slate-100 uppercase truncate">
                       System Console
                     </h1>
-                    <p className="qx-mono text-[8px] sm:text-[9px] text-slate-500 truncate">
+                    <p className="qx-mono text-[9px] sm:text-[10px] text-slate-400/70 truncate">
                       stream :: {serverId}
                     </p>
                   </div>
@@ -893,7 +928,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               <div
                 ref={bodyRef}
                 onScroll={onScroll}
-                className="flex-1 overflow-y-auto px-2.5 sm:px-4 md:px-5 py-3 sm:py-4 qx-mono text-[11px] md:text-xs leading-[1.7] qx-scroll relative z-10"
+                className="qx-log-body flex-1 min-w-0 overflow-y-auto px-2.5 sm:px-4 md:px-5 py-3 sm:py-4 qx-mono text-xs md:text-[13px] leading-[1.7] qx-scroll relative z-10"
                 style={{ WebkitOverflowScrolling: "touch" }}
                 role="log"
                 aria-live="polite"
@@ -930,7 +965,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                     className="qx-log-line flex items-start py-[2px] sm:py-[3px] px-1 sm:px-2 -mx-1 sm:-mx-2 rounded-sm hover:bg-muted transition-colors duration-150 group"
                     style={{ animationDelay: `${Math.min(i * 10, 200)}ms` }}
                   >
-                    <span className="hidden sm:inline-block text-foreground/[0.12] group-hover:text-emerald-300/50 mr-2 sm:mr-3 select-none shrink-0 w-7 sm:w-9 text-right text-[10px] leading-[1.75] transition-colors duration-200 tabular-nums">
+                    <span className="hidden sm:inline-block text-foreground/[0.12] group-hover:text-emerald-300/50 mr-2 sm:mr-3 select-none shrink-0 w-7 sm:w-9 text-right text-[11px] leading-[1.75] transition-colors duration-200 tabular-nums">
                       {i + 1}
                     </span>
                     {renderLine(l)}
@@ -963,8 +998,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               )}
 
               {/* ── Quick commands ── */}
-              <div className="px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10 border-t border-border-subtle bg-black/20 backdrop-blur-md">
-                <span className="qx-display text-[8px] font-bold uppercase tracking-[0.22em] text-slate-500 shrink-0 mr-0.5 hidden xs:inline">
+              <div className="qx-quick-bar px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10 border-t border-border-subtle backdrop-blur-md">
+                <span className="qx-display text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400/80 shrink-0 mr-0.5 hidden xs:inline">
                   Quick
                 </span>
                 {QUICK_COMMANDS.map((q) => (
@@ -975,7 +1010,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                       setCommand(q.cmd);
                       inputRef.current?.focus();
                     }}
-                    className={`qx-mono text-[10px] px-2.5 py-1 rounded-lg border whitespace-nowrap transition-all duration-200 shrink-0 ${
+                    className={`qx-command-chip qx-mono text-[11px] px-2.5 py-1.5 rounded-lg border whitespace-nowrap transition-all duration-200 shrink-0 ${
                       q.danger
                         ? "text-rose-400/90 border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20"
                         : "text-slate-300 border-border/80 bg-muted/60 hover:border-emerald-400/40 hover:bg-emerald-400/[0.08]"
@@ -984,7 +1019,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                     {q.label}
                   </button>
                 ))}
-                <span className="qx-mono text-[9px] text-slate-600 ml-auto shrink-0 hidden md:block">
+                <span className="qx-mono text-[10px] text-slate-500/80 ml-auto shrink-0 hidden md:block">
                   press <kbd className="text-slate-500 border border-border rounded-sm px-1">/</kbd> to focus
                 </span>
               </div>
@@ -992,10 +1027,10 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               {/* ── Command bar ── */}
               <form
                 onSubmit={send}
-                className="p-2 sm:p-3 md:p-4 flex gap-2 relative z-10 bg-black/40 backdrop-blur-md border-t border-border-subtle"
+                className="qx-command-form p-2 sm:p-3 md:p-4 flex gap-2 relative z-10 backdrop-blur-md border-t border-border-subtle"
               >
-                <div className="qx-input-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 border border-border bg-muted/80 transition-all duration-300 min-w-0">
-                  <span className="text-emerald-400/80 qx-mono text-xs mr-1.5 sm:mr-3 select-none font-semibold whitespace-nowrap shrink-0">
+                <div className="qx-input-shell qx-command-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 border border-border transition-all duration-300 min-w-0">
+                  <span className="text-emerald-300/90 qx-mono text-[11px] sm:text-xs mr-1.5 sm:mr-3 select-none font-semibold whitespace-nowrap shrink-0">
                     <span className="hidden sm:inline">admin@node:~$</span>
                     <span className="sm:hidden">&gt;</span>
                   </span>
@@ -1005,7 +1040,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                     value={command}
                     onChange={(e) => setCommand(e.target.value)}
                     onKeyDown={onInputKey}
-                    className="flex-1 bg-transparent py-2.5 sm:py-3 text-emerald-50/90 focus:outline-none qx-mono text-xs placeholder:text-foreground/25 caret-emerald-400 min-w-0"
+                    className="flex-1 bg-transparent py-2.5 sm:py-3 text-emerald-50/95 focus:outline-none qx-mono text-[13px] placeholder:text-foreground/30 caret-emerald-400 min-w-0"
                     placeholder="Type a command…"
                     spellCheck={false}
                     autoComplete="off"
@@ -1021,7 +1056,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                 <button
                   type="submit"
                   disabled={!command.trim()}
-                  className="qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200 bg-emerald-400/[0.12] border border-emerald-400/30 rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
+                  className="qx-run qx-execute qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-100 bg-emerald-400/[0.12] border border-emerald-400/30 rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
                 >
                   Execute
                 </button>
