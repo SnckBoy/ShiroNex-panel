@@ -15,6 +15,7 @@ import {
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import { normalizeTelemetry, formatBytes, formatCpu, formatPercent } from "../utils/telemetry";
 
 /* ═══════════════════════════════════════════════════════
    TYPES
@@ -26,6 +27,7 @@ interface ServerConsoleProps {
     version?: string;
     [key: string]: unknown;
   };
+  actionNotice?: { tone: "info" | "success" | "error"; text: string } | null;
 }
 
 type LogLevel = "info" | "warn" | "error";
@@ -211,7 +213,21 @@ function Clock() {
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════ */
 
-export default function ServerConsole({ serverId, server }: ServerConsoleProps) {
+function ResourceMetric({ label, value, detail, percent, tone }: { label: string; value: string; detail: string; percent: number | null; tone: string }) {
+  return <article className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"><div className="mb-3 flex items-start justify-between gap-3"><div><p className="qx-display text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p><p className="qx-mono mt-1 text-lg font-semibold text-slate-100">{value}</p></div><span className="mt-1 h-2 w-2 rounded-full" style={{ backgroundColor: tone, boxShadow: `0 0 12px ${tone}` }} /></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full transition-[width] duration-500" style={{ width: percent === null ? "0%" : `${Math.max(0, Math.min(100, percent))}%`, background: `linear-gradient(90deg, ${tone}55, ${tone})` }} /></div><p className="mt-2 text-[11px] text-slate-500">{detail}</p></article>;
+}
+
+function ResourceStatus({ snapshot }: { snapshot: ReturnType<typeof normalizeTelemetry> }) {
+  const live = snapshot.status === "live";
+  const statusLabel = live ? "Live node data" : snapshot.status === "stale" ? "Data is stale" : "Waiting for node data";
+  const memoryValue = formatBytes(snapshot.memory.usedBytes);
+  const memoryDetail = snapshot.memory.limitBytes === null ? "No memory limit reported" : `${memoryValue} of ${formatBytes(snapshot.memory.limitBytes)} used`;
+  const diskValue = formatBytes(snapshot.disk.usedBytes);
+  const diskDetail = snapshot.disk.limitBytes === null ? "No disk limit reported" : `${diskValue} of ${formatBytes(snapshot.disk.limitBytes)} used`;
+  return <section className="qx-panel rounded-2xl border border-white/10 p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="snx-eyebrow"><XTerm className="h-3.5 w-3.5" /> Resource status</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Node usage</h2></div><span className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${live ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-200"}`}>{statusLabel}</span></div><div className="grid gap-3 sm:grid-cols-3"><ResourceMetric label="CPU usage" value={formatCpu(snapshot.cpu.usagePercent)} detail={snapshot.cpu.capacityPercent === null ? "Live CPU utilization" : `Capacity ${formatPercent(snapshot.cpu.capacityPercent)}`} percent={snapshot.cpu.visualPercent} tone="#34d399" /><ResourceMetric label="Memory" value={memoryValue} detail={memoryDetail} percent={snapshot.memory.visualPercent} tone="#60a5fa" /><ResourceMetric label="Disk" value={diskValue} detail={diskDetail} percent={snapshot.disk.visualPercent} tone="#fbbf24" /></div></section>;
+}
+
+export default function ServerConsole({ serverId, server, actionNotice }: ServerConsoleProps) {
   const [logs, setLogs] = useState<string[]>([]);
   const [command, setCommand] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
@@ -225,6 +241,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   const [isMinimized, setIsMinimized] = useState(false);
   const [wrapLines, setWrapLines] = useState(true);
   const [terminalFontSize, setTerminalFontSize] = useState<"small" | "normal" | "large">("normal");
+  const [resourceSnapshot, setResourceSnapshot] = useState(() => normalizeTelemetry(null));
+  const lastActionNotice = useRef("");
   const [windowOffset, setWindowOffset] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
 
@@ -237,6 +255,27 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     const t = setTimeout(() => setReady(true), 60);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!actionNotice?.text || actionNotice.text === lastActionNotice.current) return;
+    lastActionNotice.current = actionNotice.text;
+    setLogs((previous) => [...previous, `[System] ${actionNotice.text}`].slice(-MAX_LOG_LINES));
+  }, [actionNotice]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadResources = async () => {
+      try {
+        const response = await axios.get(`/api/servers/${serverId}/stats`);
+        if (mounted) setResourceSnapshot((previous) => normalizeTelemetry(response.data, previous, Date.now()));
+      } catch {
+        if (mounted) setResourceSnapshot((previous) => normalizeTelemetry({ available: false }, previous, Date.now()));
+      }
+    };
+    void loadResources();
+    const timer = window.setInterval(loadResources, STATS_POLL_MS);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [serverId]);
 
   /* ── Socket stream ── */
   useEffect(() => {
@@ -426,22 +465,25 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     const ts = log.match(/^(\[\d{2}:\d{2}:\d{2}\s[^\]]+\]|\d{2}:\d{2}:\d{2})/);
     const level = levelOf(raw);
 
-    let text = "text-slate-400";
+    let text = "text-slate-300";
     let rail = "bg-slate-600/40";
+    let badge = "INFO";
+    let badgeClass = "text-sky-300 bg-sky-400/10 border-sky-400/20";
 
-    if (level === "error") { text = "text-rose-400 font-medium"; rail = "bg-rose-500/70"; }
-    else if (level === "warn") { text = "text-amber-300/90"; rail = "bg-amber-400/70"; }
-    else if (log.startsWith(">")) { text = "text-emerald-300 font-semibold"; rail = "bg-emerald-400/70"; }
-    else if (log.startsWith("[System")) { text = "text-emerald-300/75 italic"; rail = "bg-emerald-400/60"; }
-    else if (log.includes("INFO")) { text = "text-sky-200/85"; rail = "bg-sky-500/50"; }
+    if (level === "error") { text = "text-rose-300 font-medium"; rail = "bg-rose-500/70"; badge = "ERROR"; badgeClass = "text-rose-300 bg-rose-400/10 border-rose-400/25"; }
+    else if (level === "warn") { text = "text-amber-200"; rail = "bg-amber-400/70"; badge = "WARN"; badgeClass = "text-amber-200 bg-amber-400/10 border-amber-400/25"; }
+    else if (log.startsWith(">")) { text = "text-emerald-300 font-semibold"; rail = "bg-emerald-400/70"; badge = "CMD"; badgeClass = "text-emerald-300 bg-emerald-400/10 border-emerald-400/25"; }
+    else if (log.startsWith("[System")) { text = "text-violet-200/90 italic"; rail = "bg-violet-400/60"; badge = "SYSTEM"; badgeClass = "text-violet-200 bg-violet-400/10 border-violet-400/25"; }
+    else if (log.includes("INFO")) { text = "text-sky-200/90"; rail = "bg-sky-500/50"; }
 
     const lineSize = terminalFontSize === "small" ? "text-[10px]" : terminalFontSize === "large" ? "text-sm" : "text-[11px] sm:text-xs";
     return (
       <span className={`flex-1 flex items-stretch min-w-0`}>
         <span className={`w-[2px] sm:w-[3px] shrink-0 rounded-full mr-2 sm:mr-3 self-stretch ${rail}`} />
           <span className={`${wrapLines ? "break-words whitespace-pre-wrap" : "whitespace-pre"} min-w-0 ${lineSize} leading-[1.6] ${text}`}>
-          {ts && <span className="text-foreground/25 mr-1.5 sm:mr-2 select-none font-mono text-[10px]">{ts[0]}</span>}
-          {ts ? log.substring(ts[0].length) : log}
+          {ts && <span className="text-foreground/35 mr-1.5 sm:mr-2 select-none font-mono text-[10px]">{ts[0]}</span>}
+          <span className={`mr-2 inline-flex rounded border px-1.5 py-0.5 align-middle text-[9px] font-bold leading-none tracking-[0.12em] ${badgeClass}`}>{badge}</span>
+          {ts ? log.substring(ts[0].length).replace(/^\s*[:\-]\s*/, "") : log}
         </span>
       </span>
     );
@@ -656,6 +698,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                 </button>
               </form>
             </section>
+            <ResourceStatus snapshot={resourceSnapshot} />
 
           </div>
         </div>
