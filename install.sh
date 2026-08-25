@@ -23,10 +23,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-info(){ printf '\033[1;36m[INFO]\033[0m %s\n' "$*"; }
-ok(){ printf '\033[1;32m[ OK ]\033[0m %s\n' "$*"; }
-warn(){ printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
-fail(){ printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_CYAN=$'\033[38;5;51m'; C_BLUE=$'\033[38;5;39m'; C_PURPLE=$'\033[38;5;141m'; C_GREEN=$'\033[38;5;82m'; C_YELLOW=$'\033[38;5;220m'; C_RED=$'\033[38;5;203m'; C_WHITE=$'\033[38;5;255m'; C_GRAY=$'\033[38;5;245m'
+else
+  C_RESET=''; C_BOLD=''; C_DIM=''; C_CYAN=''; C_BLUE=''; C_PURPLE=''; C_GREEN=''; C_YELLOW=''; C_RED=''; C_WHITE=''; C_GRAY=''
+fi
+
+info(){ printf '%s[%sINFO%s]%s %s\n' "$C_CYAN" "$C_BOLD" "$C_RESET" "$C_RESET" "$*"; }
+ok(){ printf '%s[%s  OK%s]%s %s\n' "$C_GREEN" "$C_BOLD" "$C_RESET" "$C_RESET" "$*"; }
+warn(){ printf '%s[%s WARN%s]%s %s\n' "$C_YELLOW" "$C_BOLD" "$C_RESET" "$C_RESET" "$*"; }
+fail(){ printf '%s[%sERROR%s]%s %s\n' "$C_RED" "$C_BOLD" "$C_RESET" "$C_RESET" "$*" >&2; exit 1; }
+section(){ printf '\n%s%s━━━ %s %s━━━%s\n' "$C_PURPLE" "$C_BOLD" "$*" "$C_RESET" "$C_RESET"; }
+step(){ printf '%s  ›%s %s\n' "$C_BLUE" "$C_RESET" "$*"; }
 
 require_tty() {
   if ! ( : </dev/tty ) 2>/dev/null; then
@@ -47,12 +55,10 @@ tty_confirm() {
 }
 
 banner() {
-cat <<'EOF'
-╔══════════════════════════════════════════════════════════╗
-║                    SHIRONEX INSTALLER                    ║
-║             Minecraft & VPS Hosting Panel               ║
-╚══════════════════════════════════════════════════════════╝
-EOF
+  printf '\n%s%s╭──────────────────────────────────────────────────────────╮%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET"
+  printf '%s%s│%s %s%sSHIRONEX%s %s%sINSTALLER%s %s│%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET" "$C_WHITE" "$C_BOLD" "$C_RESET" "$C_PURPLE" "$C_BOLD" "$C_RESET" "$C_CYAN" "$C_RESET"
+  printf '%s%s│%s %sMinecraft & VPS Hosting Control Panel%s %s│%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET" "$C_GRAY" "$C_RESET" "$C_CYAN" "$C_RESET"
+  printf '%s%s╰──────────────────────────────────────────────────────────╯%s\n\n' "$C_CYAN" "$C_BOLD" "$C_RESET"
 }
 
 require_root(){ [[ "$EUID" -eq 0 ]] || fail "Run with sudo/root."; }
@@ -91,6 +97,8 @@ check_network() {
 }
 
 install_base_dependencies() {
+  section "System prerequisites"
+  step "Refreshing package indexes and checking Node.js runtime"
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl git openssl build-essential xz-utils
   if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]]; then
@@ -118,6 +126,8 @@ install_base_dependencies() {
 }
 
 install_docker() {
+  section "Container runtime"
+  step "Checking Docker availability"
   if command -v docker >/dev/null 2>&1; then
     if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
     docker info >/dev/null 2>&1 || fail "Docker is installed but not responding."
@@ -162,6 +172,8 @@ EOF
 }
 
 bootstrap_source() {
+  section "ShiroNex source"
+  step "Preparing the canonical application source tree"
   # When install.sh is executed through curl, download the actual repository source.
   if [[ -f "$(dirname "$0")/package.json" ]]; then
     SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -189,6 +201,8 @@ backup() {
 }
 
 configure_panel() {
+  section "Panel build and service"
+  step "Installing the native panel at $APP_DIR"
   install -d -m 750 "$APP_DIR"
   if [[ "$SOURCE_DIR" != "$APP_DIR" ]]; then
     cp -a "$SOURCE_DIR"/. "$APP_DIR/"
@@ -232,6 +246,8 @@ configure_panel() {
 }
 
 install_panel_docker() {
+  section "Docker panel installation"
+  step "Building the ShiroNex panel container"
   require_root
   check_os
   check_network
@@ -326,6 +342,8 @@ install_panel() {
 }
 
 install_local_node() {
+  section "Local node onboarding"
+  step "Registering the local daemon with the panel"
   require_root
   check_os
   check_network
@@ -391,6 +409,8 @@ EOF
 }
 
 install_node() {
+  section "Remote node onboarding"
+  step "Preparing this VPS as a ShiroNex node"
   require_root
   check_os
   check_network
@@ -414,6 +434,8 @@ install_node() {
 }
 
 configure_ssl() {
+  section "HTTPS / SSL configuration"
+  step "Preparing the secure reverse proxy"
   require_root
   check_os
   local domain email
@@ -480,6 +502,8 @@ diagnostics() {
 }
 
 manage_users() {
+  section "User administration"
+  step "Opening the secure user management tool"
   require_root
   [[ -d "$APP_DIR" && -f "$APP_DIR/package.json" ]] || fail "Install the ShiroNex panel before managing users."
   command -v npx >/dev/null 2>&1 || fail "npm/npx is required. Install the panel first."
@@ -488,6 +512,8 @@ manage_users() {
 }
 
 update_all() {
+  section "ShiroNex update"
+  step "Creating a backup before updating the panel and node"
   require_root
   backup
   cd "$APP_DIR"
@@ -501,6 +527,8 @@ update_all() {
 }
 
 repair_all() {
+  section "Repair installation"
+  step "Rebuilding services while preserving application data"
   require_root
   [[ -d "$APP_DIR" ]] || fail "Panel directory not found."
   backup
@@ -514,6 +542,8 @@ repair_all() {
 }
 
 uninstall_all() {
+  section "Uninstall ShiroNex"
+  step "Backups are preserved unless you remove them separately"
   require_root
   tty_confirm "Remove ShiroNex application/services? Backups are preserved. [y/N] " || return 0
 
@@ -540,21 +570,20 @@ system_info() {
 
 menu() {
   banner
-  cat <<'EOF'
-
-[1] Install Panel — Native
-[2] Install Panel — Docker
-[3] Install Remote Node
-[4] Install Panel + Node
-[5] Configure HTTPS / SSL
-[6] Update ShiroNex
-[7] Repair Installation
-[8] Diagnostics
-[9] Uninstall
-[10] System Information
-[11] Create / Update Users
-[0] Exit
-EOF
+  printf '%s%s  INSTALLATION MODES%s\n' "$C_WHITE" "$C_BOLD" "$C_RESET"
+  printf '%s  [1]%s  Install Panel — Native\n' "$C_CYAN" "$C_RESET"
+  printf '%s  [2]%s  Install Panel — Docker\n' "$C_CYAN" "$C_RESET"
+  printf '%s  [3]%s  Install Remote Node\n' "$C_CYAN" "$C_RESET"
+  printf '%s  [4]%s  Install Panel + Node\n' "$C_CYAN" "$C_RESET"
+  printf '\n%s%s  MAINTENANCE%s\n' "$C_WHITE" "$C_BOLD" "$C_RESET"
+  printf '%s  [5]%s  Configure HTTPS / SSL\n' "$C_PURPLE" "$C_RESET"
+  printf '%s  [6]%s  Update ShiroNex\n' "$C_PURPLE" "$C_RESET"
+  printf '%s  [7]%s  Repair Installation\n' "$C_PURPLE" "$C_RESET"
+  printf '%s  [8]%s  Diagnostics\n' "$C_PURPLE" "$C_RESET"
+  printf '%s  [9]%s  Uninstall\n' "$C_PURPLE" "$C_RESET"
+  printf '%s [10]%s  System Information\n' "$C_PURPLE" "$C_RESET"
+  printf '%s [11]%s  Create / Update Users\n' "$C_PURPLE" "$C_RESET"
+  printf '\n%s  [0]%s  Exit\n\n' "$C_RED" "$C_RESET"
   local option
   tty_read $'\nSelect an option: ' option
   case "$option" in
