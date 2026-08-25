@@ -311,3 +311,13 @@ After DNS points to the panel VPS, `sudo shironex ssl` installs Nginx and Certbo
 The Settings page provides immediate theme presets, dark/light/system appearance, accent colors, background effects, and reduced motion. These preferences are applied without a page reload and the interface respects `prefers-reduced-motion`.
 
 The clean source layout uses `src/` for application code, `public/` for static assets, `node-daemon/` for the node agent, `scripts/` for supported maintenance scripts, and the root `install.sh`, `node-install.sh`, and `shironex` commands. Do not commit `.env`, `.data/`, `dist/`, `node_modules/`, logs, credentials, or generated archives.
+
+## 14. Node status and allocation operations
+
+The node card is based on the daemon’s authenticated heartbeat. `ONLINE` means the panel has received a valid heartbeat within the 45-second default timeout; `OFFLINE` means the heartbeat is stale or has never been received. The card shows the last-heartbeat age, daemon version, Docker state, server counts, and the latest CPU, RAM, and disk values reported by the daemon. A health check performs a live authenticated request to the daemon and reports DNS, TLS, latency, Docker, and system results.
+
+Use **Nodes → Allocations** to manage addresses for a selected node. Allocations are persisted in `.data/allocations.json`. The API validates IPv4/IPv6 family, port range, overlap, node ownership, assignment uniqueness, and server-port membership. Set one allocation as primary when the node has multiple addresses. The server creation flow requires an available allocation for remote nodes and blocks new creation when a node is disabled or in maintenance. Maintenance does not stop existing containers.
+
+The **Panel + Node** installer path is now a real local-node setup: after the panel health check passes, it calls the loopback-only bootstrap endpoint using the generated `NODE_AUTH_SECRET`, receives a newly generated node credential, writes `/etc/shironex-node/config.json` with mode `600`, builds the daemon, enables `shironex-node.service`, and checks that the service is active. Remote nodes continue to use short-lived single-use setup tokens. The script served at `/node.sh` is kept identical to the repository `node-install.sh` implementation so the remote bootstrap does not regress to the legacy installer.
+
+If SFTP port `6868` is already occupied, the panel keeps running and logs a controlled warning. Set `SFTP_PORT` in the panel environment to another available port when SFTP is required. The SFTP service remains optional and should not be exposed publicly without firewall restrictions.

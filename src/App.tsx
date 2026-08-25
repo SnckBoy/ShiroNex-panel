@@ -43,6 +43,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <Layout>{children}</Layout>;
 };
 
+const AdminOnlyRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+  if (user?.role !== "admin" && user?.role !== "owner") return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
 const PublicAuthRoute = ({ children }: { children: React.ReactNode }) => {
   const { setupRequired, loading } = useAuth();
   if (loading || setupRequired === null) return <div className="min-h-screen grid place-items-center bg-background text-foreground">Loading...</div>;
@@ -68,15 +74,15 @@ const AnimatedRoutes = () => {
           <Route path="/login" element={<PublicAuthRoute><Login /></PublicAuthRoute>} />
           <Route path="/register" element={<PublicAuthRoute><Register /></PublicAuthRoute>} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/nodes" element={<ProtectedRoute><Nodes /></ProtectedRoute>} />
-          <Route path="/allocations" element={<ProtectedRoute><Allocations /></ProtectedRoute>} />
-          <Route path="/cloudflare" element={<ProtectedRoute><Cloudflare /></ProtectedRoute>} />
+          <Route path="/nodes" element={<ProtectedRoute><AdminOnlyRoute><Nodes /></AdminOnlyRoute></ProtectedRoute>} />
+          <Route path="/allocations" element={<ProtectedRoute><AdminOnlyRoute><Allocations /></AdminOnlyRoute></ProtectedRoute>} />
+          <Route path="/cloudflare" element={<ProtectedRoute><AdminOnlyRoute><Cloudflare /></AdminOnlyRoute></ProtectedRoute>} />
           <Route path="/servers" element={<ProtectedRoute><ServerList /></ProtectedRoute>} />
           <Route path="/servers/create" element={<ProtectedRoute><CreateServer /></ProtectedRoute>} />
           <Route path="/servers/:id/*" element={<ProtectedRoute><ServerView /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/api-keys" element={<ProtectedRoute><ApiKeysPage /></ProtectedRoute>} />
-          <Route path="/admin/servers" element={<ProtectedRoute><AdminServers /></ProtectedRoute>} />
+          <Route path="/api-keys" element={<ProtectedRoute><AdminOnlyRoute><ApiKeysPage /></AdminOnlyRoute></ProtectedRoute>} />
+          <Route path="/admin/servers" element={<ProtectedRoute><AdminOnlyRoute><AdminServers /></AdminOnlyRoute></ProtectedRoute>} />
         </Routes>
       </motion.div>
     </AnimatePresence>

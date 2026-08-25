@@ -32,7 +32,7 @@ export function normalizeTelemetry(payload: any, previous: TelemetrySnapshot = E
   const telemetry = source.telemetry && typeof source.telemetry === "object" ? source.telemetry : {};
 
   const cpuUsage = firstNumber(source.cpu, source.cpuUsage, telemetry.cpu?.usagePercent);
-  const cpuCapacity = firstNumber(source.limitCpu, source.cpuCapacity, telemetry.cpu?.capacityPercent) ?? 100;
+  const cpuCapacity = firstNumber(source.limitCpu, source.cpuCapacity, telemetry.cpu?.capacityPercent);
   const usedMemory = firstNumber(source.memoryUsedBytes, memory.usedBytes, source.ramBytes, source.ram) ?? null;
   const normalizedUsedMemory = source.memoryUsedBytes !== undefined || memory.usedBytes !== undefined || source.ramBytes !== undefined
     ? usedMemory
@@ -61,7 +61,7 @@ export function normalizeTelemetry(payload: any, previous: TelemetrySnapshot = E
     cpu: {
       usagePercent: cpuUsage,
       capacityPercent: cpuCapacity,
-      visualPercent: cpuUsage === null ? null : clampPercent((cpuUsage / Math.max(cpuCapacity, 0.0001)) * 100),
+      visualPercent: cpuUsage === null ? null : clampPercent(cpuCapacity !== null && cpuCapacity > 0 ? (cpuUsage / cpuCapacity) * 100 : cpuUsage),
     },
     memory: { usedBytes: normalizedUsedMemory, limitBytes: memoryLimit, usagePercent: memoryUsage, visualPercent: clampPercent(memoryUsage) },
     disk: { usedBytes: usedDisk, limitBytes: diskLimit, usagePercent: diskUsage, visualPercent: clampPercent(diskUsage) },

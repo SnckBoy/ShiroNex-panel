@@ -1,23 +1,125 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import crypto from "crypto";
-import {readJSON,writeJSON} from "../services/db.js";
-import {requireAdmin} from "../middleware/auth.js";
-import {audit,rateLimit} from "../services/security.js";
-const r=express.Router(); r.use(requireAdmin,rateLimit());
-const file="allocations.json";
-r.get("/",async(req,res)=>res.json(await readJSON(file)||[]));
-r.post("/",async(req,res)=>{
- const {nodeId,ip,portStart,portEnd,ipVersion="IPv4"}=req.body;
- if(!nodeId||!ip||!portStart) return res.status(400).json({error:"nodeId, ip and port are required"});
- const start=Number(portStart), end=Number(portEnd||portStart);
- if(start<1||end>65535||start>end) return res.status(400).json({error:"Invalid port range"});
- const nodes=await readJSON("nodes.json")||[]; if(!nodes.some((n:any)=>n.id===nodeId)) return res.status(400).json({error:"Node not found"});
- const a=await readJSON(file)||[];
- for(const x of a) if(x.nodeId===nodeId && x.ip===ip && Math.max(start,x.portStart)<=Math.min(end,x.portEnd)) return res.status(409).json({error:"IP/port range overlaps an existing allocation"});
- const item={id:crypto.randomUUID(),nodeId,ip,ipVersion,portStart:start,portEnd:end,assignedServerId:null,createdAt:new Date().toISOString()};
- a.push(item);await writeJSON(file,a);await audit("allocation.created",req,{allocationId:item.id,nodeId,ip,portStart:start,portEnd:end});res.status(201).json(item);
+import net from "net";
+import { readJSON, writeJSON } from "../services/db.js";
+import { requireAdmin } from "../middleware/auth.js";
+import { audit, rateLimit } from "../services/security.js";
+
+const router = express.Router();
+router.use(requireAdmin, rateLimit());
+const file = "allocations.json";
+
+const findNode = async (nodeId: string) => {
+  const nodes = await readJSON("nodes.json") || [];
+  return nodes.find((node: any) => node.id === nodeId);
+};
+
+const parsePort = (value: unknown) => {
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+};
+
+const validateAddress = (value: unknown, ipVersion: string) => {
+  const ip = String(value || "").trim();
+  const family = net.isIP(ip);
+  if (!family || `IPv${family}` !== ipVersion) return null;
+  return ip;
+};
+
+router.get("/", async (_req: Request, res: Response) => {
+  res.json(await readJSON(file) || []);
 });
-r.delete("/:id",async(req,res)=>{const a=await readJSON(file)||[];const x=a.find((v:any)=>v.id===req.params.id);if(!x)return res.status(404).json({error:"Allocation not found"});if(x.assignedServerId)return res.status(409).json({error:"Unassign the server first"});await writeJSON(file,a.filter((v:any)=>v.id!==x.id));await audit("allocation.deleted",req,{allocationId:x.id});res.json({success:true})});
-r.post("/:id/assign",async(req,res)=>{const a=await readJSON(file)||[];const x=a.find((v:any)=>v.id===req.params.id);if(!x)return res.status(404).json({error:"Allocation not found"});if(x.assignedServerId)return res.status(409).json({error:"Allocation already assigned"});x.assignedServerId=req.body.serverId||null;await writeJSON(file,a);res.json(x)});
-r.post("/:id/unassign",async(req,res)=>{const a=await readJSON(file)||[];const x=a.find((v:any)=>v.id===req.params.id);if(!x)return res.status(404).json({error:"Allocation not found"});x.assignedServerId=null;await writeJSON(file,a);res.json(x)});
-export default r;
+
+router.post("/", async (req: Request, res: Response) => {
+  const { nodeId, ipVersion = "IPv4" } = req.body || {};
+  const ip = validateAddress(req.body?.ip, String(ipVersion));
+  const start = parsePort(req.body?.portStart);
+  const end = parsePort(req.body?.portEnd ?? req.body?.portStart);
+  if (!nodeId || !ip || !start || !end) {
+    return res.status(400).json({ error: "nodeId, a valid IP, and ports from 1 to 65535 are required" });
+  }
+  if (start > end) return res.status(400).json({ error: "Start port must be less than or equal to end port" });
+  if (!(await findNode(String(nodeId)))) return res.status(400).json({ error: "Node not found" });
+
+  const allocations = await readJSON(file) || [];
+  const overlaps = allocations.some((allocation: any) =>
+    allocation.nodeId === nodeId && allocation.ip === ip && Math.max(start, Number(allocation.portStart)) <= Math.min(end, Number(allocation.portEnd))
+  );
+  if (overlaps) return res.status(409).json({ error: "IP/port range overlaps an existing allocation" });
+
+  const isPrimary = Boolean(req.body?.primary);
+  if (isPrimary) for (const allocation of allocations) if (allocation.nodeId === String(nodeId)) allocation.primary = false;
+  const item = {
+    id: crypto.randomUUID(),
+    nodeId: String(nodeId),
+    ip,
+    ipVersion: String(ipVersion),
+    portStart: start,
+    portEnd: end,
+    assignedServerId: null,
+    primary: isPrimary,
+    createdAt: new Date().toISOString(),
+  };
+  allocations.push(item);
+  await writeJSON(file, allocations);
+  await audit("allocation.created", req, { allocationId: item.id, nodeId: item.nodeId, ip: item.ip, portStart: start, portEnd: end });
+  return res.status(201).json(item);
+});
+
+router.post("/:id/primary", async (req: Request, res: Response) => {
+  const allocations = await readJSON(file) || [];
+  const allocation = allocations.find((value: any) => value.id === req.params.id);
+  if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+  for (const value of allocations) if (value.nodeId === allocation.nodeId) value.primary = value.id === allocation.id;
+  await writeJSON(file, allocations);
+  await audit("allocation.primary.changed", req, { allocationId: allocation.id, nodeId: allocation.nodeId });
+  return res.json(allocation);
+});
+
+router.delete("/:id", async (req: Request, res: Response) => {
+  const allocations = await readJSON(file) || [];
+  const allocation = allocations.find((value: any) => value.id === req.params.id);
+  if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+  if (allocation.assignedServerId) return res.status(409).json({ error: "Unassign the server first" });
+  await writeJSON(file, allocations.filter((value: any) => value.id !== allocation.id));
+  await audit("allocation.deleted", req, { allocationId: allocation.id, nodeId: allocation.nodeId });
+  return res.json({ success: true });
+});
+
+router.post("/:id/assign", async (req: Request, res: Response) => {
+  const allocations = await readJSON(file) || [];
+  const allocation = allocations.find((value: any) => value.id === req.params.id);
+  if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+  if (allocation.assignedServerId) return res.status(409).json({ error: "Allocation already assigned" });
+
+  const serverId = String(req.body?.serverId || "");
+  const servers = await readJSON("servers.json") || [];
+  const server = servers.find((value: any) => value.id === serverId);
+  if (!server) return res.status(404).json({ error: "Server not found" });
+  if (String(server.nodeId || "local") !== String(allocation.nodeId)) return res.status(409).json({ error: "Server and allocation belong to different nodes" });
+  const serverPort = Number(server.port);
+  if (!Number.isInteger(serverPort) || serverPort < allocation.portStart || serverPort > allocation.portEnd) {
+    return res.status(400).json({ error: "Server port is outside the allocation range" });
+  }
+  if (allocations.some((value: any) => value.assignedServerId === serverId)) {
+    return res.status(409).json({ error: "Server already has an allocation" });
+  }
+
+  allocation.assignedServerId = serverId;
+  await writeJSON(file, allocations);
+  await audit("allocation.assigned", req, { allocationId: allocation.id, nodeId: allocation.nodeId, serverId });
+  return res.json(allocation);
+});
+
+router.post("/:id/unassign", async (req: Request, res: Response) => {
+  const allocations = await readJSON(file) || [];
+  const allocation = allocations.find((value: any) => value.id === req.params.id);
+  if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+  const previousServerId = allocation.assignedServerId;
+  allocation.assignedServerId = null;
+  await writeJSON(file, allocations);
+  await audit("allocation.unassigned", req, { allocationId: allocation.id, nodeId: allocation.nodeId, serverId: previousServerId });
+  return res.json(allocation);
+});
+
+export default router;

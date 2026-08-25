@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { useParams, Link, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
-import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft, Sliders, Archive, AlertTriangle, Copy, Check, Menu, X, Users, LogOut, Lock, Activity } from "lucide-react";
+import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft, Sliders, Archive, AlertTriangle, Copy, Check, Menu, X, Users, LogOut, Lock, Activity, OctagonX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import ServerConsole from "../components/ServerConsole";
@@ -17,7 +17,6 @@ import ModManager from "../components/ModManager";
 import ModpackManager from "../components/ModpackManager";
 import SubUsersManager from "../components/SubUsersManager";
 import ServerSFTP from "../components/ServerSFTP";
-import LiveTelemetry from "../components/LiveTelemetry";
 import ServerPlayers from "../components/ServerPlayers";
 import ServerOverview from "../components/ServerOverview";
 import PlayitTunnel from "./PlayitTunnel";
@@ -113,7 +112,6 @@ export default function ServerView() {
   const tabs: any[] = [
     { name: "Overview", path: `/servers/${id}/overview`, exactPath: "overview", icon: <Activity size={18} /> },
     { name: "Terminal", path: `/servers/${id}`, exactPath: "", icon: <Terminal size={18} /> },
-    { name: "Telemetry", path: `/servers/${id}/telemetry`, exactPath: "telemetry", icon: <Activity size={18} /> },
     { name: "Players", path: `/servers/${id}/players`, exactPath: "players", icon: <Users size={18} /> },
     { name: "File Manager", path: `/servers/${id}/files`, exactPath: "files", icon: <Folder size={18} /> },
     { name: "SFTP Details", path: `/servers/${id}/sftp`, exactPath: "sftp", icon: <Network size={18} /> },
@@ -216,6 +214,9 @@ export default function ServerView() {
                 <button disabled={isProcessing} onClick={() => { handleAction('restart'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--restart col-span-2 py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />} Restart
                 </button>
+                <button disabled={isProcessing} onClick={() => { handleAction('kill'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--kill col-span-2 py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
+                  <OctagonX className="w-3.5 h-3.5 mr-1.5" /> Kill
+                </button>
              </div>
           </div>
           
@@ -315,6 +316,9 @@ export default function ServerView() {
                 <button disabled={isProcessing} onClick={() => handleAction('restart')} className="snx-quick-action snx-quick-action--restart p-1.5 sm:px-3 sm:py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin sm:mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 sm:mr-1.5" />} <span className="hidden sm:block">Restart</span>
                 </button>
+                <button disabled={isProcessing} onClick={() => handleAction('kill')} className="snx-quick-action snx-quick-action--kill p-1.5 sm:px-3 sm:py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50" title="Kill server">
+                  <OctagonX className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:block">Kill</span>
+                </button>
              </div>
           </div>
         </div>
@@ -324,7 +328,6 @@ export default function ServerView() {
            <Routes>
              <Route path="/" element={<ServerConsole serverId={id!} server={server} />} />
              <Route path="/overview" element={<ServerOverview serverId={id!} server={server} />} />
-             <Route path="/telemetry" element={<LiveTelemetry serverId={id!} server={server} />} />
              <Route path="/players" element={<ServerPlayers serverId={id!} />} />
              <Route path="/properties" element={<ServerProperties serverId={id!} />} />
              <Route path="/files" element={<FileManager serverId={id!} />} />

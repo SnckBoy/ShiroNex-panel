@@ -287,7 +287,7 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "${PANEL_PORT}:6767"
+      - "${PANEL_PORT}:${PANEL_PORT}"
     volumes:
       - ./.data:/app/.data
 EOF
@@ -325,6 +325,71 @@ install_panel() {
   printf '\nPanel URL: http://%s:%s\n' "$(hostname -I | awk '{print $1}')" "$PANEL_PORT"
 }
 
+install_local_node() {
+  require_root
+  check_os
+  check_network
+  install_base_dependencies
+  install_docker
+  [[ -d "$APP_DIR" && -f "$APP_DIR/.env" ]] || fail "Install the panel before configuring the local node."
+
+  local bootstrap_secret response credential daemon_source
+  bootstrap_secret="$(sed -n 's/^NODE_AUTH_SECRET=//p' "$APP_DIR/.env" | head -n1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+  [[ -n "$bootstrap_secret" ]] || fail "NODE_AUTH_SECRET is missing from $APP_DIR/.env."
+  daemon_source="$APP_DIR/node-daemon"
+  [[ -f "$daemon_source/package.json" ]] || fail "The node daemon source is missing from the panel installation."
+
+  response="$(curl -fsS --retry 3 -X POST "http://127.0.0.1:${PANEL_PORT}/api/node-agent/local-bootstrap" -H 'content-type: application/json' -H "x-shironex-bootstrap: $bootstrap_secret" -d "{\"port\":$NODE_PORT,\"daemonVersion\":\"1.1.0\"}")" || fail "Local node registration failed. Check: pm2 logs $APP_NAME"
+  credential="$(printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);if(!j.credential)process.exit(2);process.stdout.write(j.credential)}catch{process.exit(3)}})' 2>/dev/null)" || fail "Panel did not return a local node credential."
+
+  rm -rf "$NODE_DIR"
+  install -d -m 700 "$NODE_DIR" "$NODE_CONFIG_DIR" "$NODE_DATA_DIR"
+  cp -a "$daemon_source"/. "$NODE_DIR/"
+  PANEL_URL="http://127.0.0.1:${PANEL_PORT}" NODE_ID=local CREDENTIAL="$credential" NODE_PORT="$NODE_PORT" CONFIG_DIR="$NODE_CONFIG_DIR" node - <<'NODE'
+const fs = require("fs");
+const path = process.env.CONFIG_DIR + "/config.json";
+const config = {
+  panelUrl: process.env.PANEL_URL,
+  nodeId: process.env.NODE_ID,
+  credential: process.env.CREDENTIAL,
+  port: Number(process.env.NODE_PORT),
+  serverDirectory: "/var/lib/shironex/servers",
+  dockerSocket: "/var/run/docker.sock",
+  heartbeatIntervalMs: 10000,
+  daemonVersion: "1.1.0"
+};
+fs.writeFileSync(path, JSON.stringify(config) + "\n", { mode: 0o600 });
+NODE
+  chmod 600 "$NODE_CONFIG_DIR/config.json"
+  cd "$NODE_DIR"
+  npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
+  npm run build
+
+  cat >"/etc/systemd/system/$NODE_SERVICE.service" <<EOF
+[Unit]
+Description=ShiroNex Node Daemon (local)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node $NODE_DIR/dist/index.js
+Restart=always
+RestartSec=3
+User=root
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now "$NODE_SERVICE"
+  systemctl is-active --quiet "$NODE_SERVICE" || fail "Local node service failed. Check: journalctl -u $NODE_SERVICE -n 100 --no-pager"
+  sleep 2
+  ok "Local node installed and service is running"
+}
+
 install_node() {
   require_root
   check_os
@@ -335,17 +400,16 @@ install_node() {
 
   install -d -m 700 "$NODE_DIR" "$NODE_CONFIG_DIR" "$NODE_DATA_DIR"
 
-  if [[ -z "${SHIRONEX_PANEL_URL:-}" || -z "${SHIRONEX_NODE_ID:-}" || -z "${SHIRONEX_SETUP_TOKEN:-}" ]]; then
-    warn "No node registration parameters were supplied."
-    printf '\nCreate a node in ShiroNex → Nodes → Create Node and run its generated command here.\n'
-    printf 'Example:\n  curl -fsSL PANEL_URL/node-install.sh | sudo bash -s -- --panel PANEL_URL --node-id NODE_ID --setup-token SETUP_TOKEN --port %s\n' "$NODE_PORT"
-    return 0
-  fi
+  local panel_url="${SHIRONEX_PANEL_URL:-}" node_id="${SHIRONEX_NODE_ID:-}" setup_token="${SHIRONEX_SETUP_TOKEN:-}"
+  if [[ -z "$panel_url" ]]; then tty_read "Panel URL: " panel_url; fi
+  if [[ -z "$node_id" ]]; then tty_read "Node ID: " node_id; fi
+  if [[ -z "$setup_token" ]]; then tty_read "One-time setup token: " setup_token; fi
+  [[ -n "$panel_url" && -n "$node_id" && -n "$setup_token" ]] || fail "Panel URL, node ID, and setup token are required."
 
   "$SOURCE_DIR/node-install.sh" \
-    --panel "$SHIRONEX_PANEL_URL" \
-    --node-id "$SHIRONEX_NODE_ID" \
-    --setup-token "$SHIRONEX_SETUP_TOKEN" \
+    --panel "$panel_url" \
+    --node-id "$node_id" \
+    --setup-token "$setup_token" \
     --port "$NODE_PORT"
 }
 
@@ -497,7 +561,7 @@ EOF
     1) install_panel ;;
     2) install_panel_docker ;;
     3) install_node ;;
-    4) install_panel; install_node ;;
+    4) install_panel; install_local_node ;;
     5) configure_ssl ;;
     6) update_all ;;
     7) repair_all ;;
@@ -516,7 +580,7 @@ main() {
     panel) install_panel ;;
     docker) install_panel_docker ;;
     node) install_node ;;
-    both) install_panel; install_node ;;
+    both) install_panel; install_local_node ;;
     ssl) configure_ssl ;;
     update) update_all ;;
     repair) repair_all ;;

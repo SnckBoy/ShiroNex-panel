@@ -11,14 +11,24 @@ const router=express.Router();router.use(requireAdmin,rateLimit());
 const file="nodes.json", setupFile="node_setup_tokens.json";
 const initNodes=async()=>{const n=await readJSON(file);if(!n){await writeJSON(file,[{id:"local",name:"Local Node",description:"Panel host",hostname:"127.0.0.1",fqdn:"127.0.0.1",publicIp:"127.0.0.1",apiPort:6767,tls:false,isLocal:true,disabled:false,createdAt:new Date().toISOString(),lastHeartbeat:null,lastStats:null}])}};initNodes();
 
-const sanitize=(n:any)=>{const {credential,...safe}=n;return safe};
+const sanitize=(n:any)=>{const {credential,credentialHash,...safe}=n;return safe};
+const HEARTBEAT_TIMEOUT_MS = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
+const nodeStatus=(n:any, now=Date.now())=>{
+ const lastHeartbeat = n.lastHeartbeat ? Date.parse(n.lastHeartbeat) : NaN;
+ if (n.maintenance) return "MAINTENANCE";
+ if (n.installing) return "INSTALLING";
+ if (n.error) return "ERROR";
+ if (n.disabled) return "DISABLED";
+ return Number.isFinite(lastHeartbeat) && now - lastHeartbeat <= HEARTBEAT_TIMEOUT_MS ? "ONLINE" : "OFFLINE";
+};
+const withNodeStatus=(n:any, now=Date.now())=>({...sanitize(n),status:nodeStatus(n,now),lastHeartbeat:n.lastHeartbeat||null,heartbeatAgeMs:n.lastHeartbeat&&Number.isFinite(Date.parse(n.lastHeartbeat))?Math.max(0,now-Date.parse(n.lastHeartbeat)):null});
 
 async function publicNodes(){
  const nodes=await readJSON(file)||[]; const now=Date.now();
- return nodes.map((n:any)=>({...sanitize(n),status:n.disabled?"DISABLED":(n.lastHeartbeat && now-Date.parse(n.lastHeartbeat)<30000?"ONLINE":"OFFLINE"),lastHeartbeat:n.lastHeartbeat||null}));
+ return nodes.map((n:any)=>withNodeStatus(n,now));
 }
 router.get("/",async(req,res)=>res.json(await publicNodes()));
-router.get("/:id",async(req,res)=>{const n=(await readJSON(file)||[]).find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});res.json(sanitize(n))});
+router.get("/:id",async(req,res)=>{const n=(await readJSON(file)||[]).find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});res.json(withNodeStatus(n))});
 router.post("/",async(req,res)=>{
  const b=req.body; if(!b.name||!b.hostname||!b.apiPort)return res.status(400).json({error:"name, hostname and apiPort are required"});
  const nodes=await readJSON(file)||[];const id=crypto.randomUUID();const setupToken=randomSecret(32);
@@ -36,11 +46,14 @@ router.post("/",async(req,res)=>{
 });
 router.post("/:id/rotate",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const secret=randomSecret(48);n.credential=encryptSecret(secret);n.credentialHash=hashSecret(secret);await writeJSON(file,nodes);await audit("node.credentials.rotated",req,{nodeId:n.id});res.json({success:true})});
 router.patch("/:id",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});for(const k of ["name","description","hostname","fqdn","publicIp","internalIp","location","apiPort","tls","memory","disk","cpu","serverDirectory","dockerHost"])if(req.body[k]!==undefined)n[k]=req.body[k];await writeJSON(file,nodes);res.json(sanitize(n))});
-router.post("/:id/enable",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});n.disabled=false;await writeJSON(file,nodes);await audit("node.enabled",req,{nodeId:n.id});res.json({success:true})});
-router.post("/:id/disable",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});n.disabled=true;await writeJSON(file,nodes);await audit("node.disabled",req,{nodeId:n.id});res.json({success:true})});
+router.post("/:id/enable",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});n.disabled=false;await writeJSON(file,nodes);await audit("node.enabled",req,{nodeId:n.id});res.json({success:true,status:nodeStatus(n)})});
+router.post("/:id/disable",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});n.disabled=true;await writeJSON(file,nodes);await audit("node.disabled",req,{nodeId:n.id});res.json({success:true,status:nodeStatus(n)})});
+router.post("/:id/maintenance",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});n.maintenance=true;await writeJSON(file,nodes);await audit("node.maintenance.enabled",req,{nodeId:n.id});res.json({success:true,status:nodeStatus(n)})});
+router.delete("/:id/maintenance",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});n.maintenance=false;await writeJSON(file,nodes);await audit("node.maintenance.disabled",req,{nodeId:n.id});res.json({success:true,status:nodeStatus(n)})});
 router.delete("/:id",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const servers=await readJSON("servers.json")||[];if(servers.some((s:any)=>s.nodeId===n.id))return res.status(409).json({error:"Cannot delete a node with assigned servers"});await writeJSON(file,nodes.filter((x:any)=>x.id!==n.id));await audit("node.deleted",req,{nodeId:n.id});res.json({success:true})});
-router.post("/:id/test",async(req,res)=>{try{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const secret=decryptSecret(n.credential);const base=`${n.tls?"https":"http"}://${n.fqdn||n.hostname}:${n.apiPort}`;const result=await nodeControl.health({id:n.id,baseUrl:base,credential:secret});res.json({success:true,health:result})}catch(e:any){res.status(502).json({success:false,error:e.message})}});
-router.get("/:id/stats",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});if(n.disabled)return res.status(409).json({error:"Node disabled"});res.json(n.lastStats||{error:"No heartbeat received yet"})});
+ router.post("/:id/test",async(req,res)=>{try{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const secret=decryptSecret(n.credential);const base=`${n.tls?"https":"http"}://${n.fqdn||n.hostname}:${n.apiPort}`;const result=await nodeControl.health({id:n.id,baseUrl:base,credential:secret});res.json({success:true,health:result})}catch(e:any){res.status(502).json({success:false,error:e.message})}});
+ router.post("/:id/reconnect",async(req,res)=>{try{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});if(n.disabled)return res.status(409).json({error:"Node is disabled"});const secret=decryptSecret(n.credential);const base=`${n.tls?"https":"http"}://${n.fqdn||n.hostname}:${n.apiPort}`;const health:any=await nodeControl.health({id:n.id,baseUrl:base,credential:secret});n.lastHeartbeat=new Date().toISOString();n.lastStats=health;n.error=null;await writeJSON(file,nodes);await audit("node.reconnected",req,{nodeId:n.id});res.json({success:true,status:nodeStatus(n),health})}catch(e:any){res.status(502).json({success:false,error:e.message||"Node reconnect failed"})}});
+router.get("/:id/stats",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});if(n.disabled)return res.status(409).json({error:"Node disabled"});res.json({...n.lastStats,status:nodeStatus(n),lastHeartbeat:n.lastHeartbeat||null,heartbeatAgeMs:n.lastHeartbeat&&Number.isFinite(Date.parse(n.lastHeartbeat))?Math.max(0,Date.now()-Date.parse(n.lastHeartbeat)):null});});
 router.get("/:id/health",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const checks:any={cloudflare:{status:"not_checked"},dns:{status:"not_checked"},node:{status:"offline"},docker:{status:"unknown"},system:{status:"unknown"}};try{
  const host=n.fqdn||n.hostname; const resolved=await dns.lookup(host); checks.dns={status:"ok",address:resolved.address};
  if(n.tls){await new Promise((resolve,reject)=>{const socket=tls.connect({host,port:n.apiPort,servername:host,rejectUnauthorized:true},()=>{socket.end();resolve(true)});socket.on("error",reject);setTimeout(()=>{socket.destroy();reject(new Error("TLS timeout"))},5000)});checks.node.tls="valid"}

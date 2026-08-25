@@ -35,6 +35,16 @@ interface ServerRecord {
   ram?: number;
   disk?: number;
   version?: string;
+  software?: string;
+  owner?: string;
+  ownerUsername?: string;
+  nodeId?: string;
+  nodeName?: string;
+  nodeStatus?: string | null;
+  address?: string;
+  lastActivity?: string | null;
+  playersOnline?: number | null;
+  playersMax?: number | null;
   suspended?: boolean;
 }
 
@@ -47,8 +57,6 @@ interface ServersState {
 /* ── STEP 3 · Constants ───────────────────────────────────────────────────── */
 const EASE = [0.22, 1, 0.36, 1] as const;
 const POLL_INTERVAL_MS = 5_000;
-const DEFAULT_CPU = 100;
-const DEFAULT_DISK = 10;
 const SURFACE = "transparent"; // Changed to transparent so global background shows
 
 const containerVariants: Variants = {
@@ -193,28 +201,15 @@ const ServerCard = memo(function ServerCard({
           <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-all group-hover:translate-x-0.5 group-hover:text-foreground-muted" />
         )}
       </div>
-      {/* 6.3 · Metrics */}
+      {/* 6.3 · Identity and limits */}
       <div className="mt-5 grid grid-cols-2 gap-4 rounded-xl border border-border-subtle bg-muted px-4 py-4 sm:grid-cols-4">
-        <Metric label="CPU Limit">
-          {server.cpu ?? DEFAULT_CPU}
-          <span className="ml-0.5 text-muted-foreground">%</span>
-        </Metric>
-        <Metric label="RAM Usage">
-          <ServerLiveStats
-            serverId={server.id}
-            limitRam={server.ram}
-            status={server.status}
-          />
-        </Metric>
-        <Metric label="Disk Limit">
-          {server.disk ?? DEFAULT_DISK}
-          <span className="ml-0.5 text-muted-foreground">GB</span>
-        </Metric>
-        <Metric label="Version">
-          <span className="block truncate" title={server.version}>
-            {server.version ?? "—"}
-          </span>
-        </Metric>
+        <Metric label="Owner"><span className="block truncate" title={server.ownerUsername || server.owner}>{server.ownerUsername || server.owner || "—"}</span></Metric>
+        <Metric label="Node"><span className="block truncate" title={server.nodeName || server.nodeId}>{server.nodeName || server.nodeId || "—"}</span></Metric>
+        <Metric label="Address"><span className="block truncate font-mono text-xs" title={server.address}>{server.address || "—"}</span></Metric>
+        <Metric label="Software / Version"><span className="block truncate" title={`${server.software || "—"} ${server.version || ""}`}>{server.software || "—"}{server.version ? ` · ${server.version}` : ""}</span></Metric>
+      </div>
+      <div className="mt-3 rounded-xl border border-border-subtle bg-black/10 px-4 py-3">
+        <ServerLiveStats serverId={server.id} limitRam={server.ram} limitCpu={server.cpu} limitDisk={server.disk} status={server.status} />
       </div>
     </>
   );

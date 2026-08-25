@@ -170,8 +170,15 @@ router.post("/:id/playit/reset", async (req, res) => {
   });
 });
 
-// Sub-users endpoints
-router.get("/:id/subusers", async (req, res) => {
+// Sub-users are an owner/staff administration feature; normal server access is not enough.
+const requireServerOwnerOrStaff = (req: any, res: any, next: any) => {
+  const server = req.server;
+  const user = req.user;
+  if (user?.role !== "admin" && user?.role !== "owner" && server?.owner !== user?.id) return res.status(403).json({ error: "Only the server owner or staff can manage sub-users" });
+  next();
+};
+
+router.get("/:id/subusers", requireServerOwnerOrStaff, async (req, res) => {
   try {
     const { id } = req.params;
     const { readJSON } = await import("../services/db.js");
@@ -189,7 +196,7 @@ router.get("/:id/subusers", async (req, res) => {
   }
 });
 
-router.post("/:id/subusers", async (req, res) => {
+router.post("/:id/subusers", requireServerOwnerOrStaff, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, permissions } = req.body;
@@ -214,7 +221,7 @@ router.post("/:id/subusers", async (req, res) => {
   }
 });
 
-router.delete("/:id/subusers/:userId", async (req, res) => {
+router.delete("/:id/subusers/:userId", requireServerOwnerOrStaff, async (req, res) => {
   try {
     const { id, userId } = req.params;
     const { readJSON, writeJSON } = await import("../services/db.js");

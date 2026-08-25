@@ -238,3 +238,11 @@ The Settings page now supports immediate theme presets, dark/light/system appear
 ## Source integration and CI
 
 The repository includes the production installer set (`install.sh`, `node-install.sh`, and `shironex`), the repository `.gitignore`, and a GitHub Actions workflow at `.github/workflows/ci.yml`. CI runs panel dependency installation, TypeScript lint, production build, node-daemon dependency installation, node-daemon build, and shell syntax checks. The installer bootstraps from the real GitHub source tree and does not depend on a source archive.
+
+## Node status, maintenance, and allocations
+
+Node status is derived from authenticated daemon heartbeats rather than a frontend timer. A node is `ONLINE` only while its most recent authenticated heartbeat is within the configured timeout (45 seconds by default); otherwise it is `OFFLINE`. The panel also reports `MAINTENANCE`, `INSTALLING`, `ERROR`, and `DISABLED` states when those server-side flags apply, together with the last-heartbeat age.
+
+Allocations belong to a node. Open **Nodes**, choose **Allocations** for the target node, and add a valid IPv4 or IPv6 address with a single port or range. The panel rejects invalid ports, overlapping ranges, cross-node assignments, duplicate server assignments, and server ports outside the selected allocation. A node can have one primary allocation at a time. New server creation on a disabled or maintenance node is rejected by the API, and remote-node creation requires an available allocation.
+
+The combined installer path now performs local-node bootstrap automatically after the panel starts. It registers the built-in loopback node with a short-lived bootstrap secret, installs the daemon under `/opt/shironex-node`, writes a mode-600 configuration, enables `shironex-node.service`, and verifies that the service is active. The `/node.sh` endpoint serves the same hardened installer logic as the repository `node-install.sh` script.

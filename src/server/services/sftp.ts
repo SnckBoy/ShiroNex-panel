@@ -6,7 +6,7 @@ import path from "path";
 import bcrypt from "bcrypt";
 import { readJSON, writeJSON } from "./db.js";
 
-const SFTP_PORT = 6868;
+const SFTP_PORT = Number(process.env.SFTP_PORT || 6868);
 const HOST_KEYS_DIR = path.join(process.cwd(), ".data", "ssh");
 const SFTP_DB_FILE = "sftp_users.json";
 
@@ -106,6 +106,10 @@ export async function initSFTPServer() {
     });
   });
 
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") console.warn(`SFTP disabled: port ${SFTP_PORT} is already in use.`);
+    else console.error("SFTP server error:", error.message);
+  });
   server.listen(SFTP_PORT, "0.0.0.0", () => {
     console.log(`SFTP server listening on port ${SFTP_PORT}`);
   });

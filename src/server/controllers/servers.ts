@@ -34,12 +34,26 @@ export const getServers = async (req: Request, res: Response) => {
   const userServers = user.role === "admin" || user.role === "owner" ? servers : servers.filter((s: any) => s.owner === user.id);
 
   // Update statuses
+  const [users, nodes] = await Promise.all([readJSON("users.json") || [], readJSON("nodes.json") || []]);
   const updatedServers = await Promise.all(userServers.map(async (server: any) => {
+    const next = { ...server };
     if (server.containerId) {
       const status = await getContainerStatus(server.containerId, server.nodeId);
-      server.status = status?.State?.Running ? "online" : "offline";
+      next.status = status?.State?.Running ? "online" : "offline";
     }
-    return server;
+    const ownerRecord = users.find((candidate: any) => candidate.id === server.owner);
+    const nodeRecord = nodes.find((candidate: any) => candidate.id === (server.nodeId || "local"));
+    return {
+      ...next,
+      nodeId: server.nodeId || "local",
+      nodeName: nodeRecord?.name || (server.nodeId === "local" ? "Local Node" : "Unknown node"),
+      nodeStatus: nodeRecord?.disabled ? "DISABLED" : nodeRecord?.status || null,
+      ownerUsername: ownerRecord?.username || server.owner || "Unassigned",
+      address: `${server.ipAlias || nodeRecord?.publicIp || nodeRecord?.hostname || "127.0.0.1"}:${server.port || "—"}`,
+      lastActivity: server.updatedAt || server.lastActivity || server.createdAt || null,
+      playersOnline: server.playersOnline ?? null,
+      playersMax: server.playersMax ?? null,
+    };
   }));
 
   res.json(updatedServers);
@@ -123,25 +137,38 @@ export const createServer = async (req: Request, res: Response) => {
     return;
   }
 
+  const requestedNodeId = String(nodeId || "local");
+  const nodes = await readJSON("nodes.json") || [];
+  const selectedNode = nodes.find((node: any) => node.id === requestedNodeId) || (requestedNodeId === "local" ? { id: "local", disabled: false } : null);
+  if (!selectedNode) return res.status(400).json({ error: "Node not found" });
+  if (selectedNode.disabled) return res.status(409).json({ error: "Selected node is disabled" });
+  if (selectedNode.maintenance) return res.status(409).json({ error: "Selected node is in maintenance mode; new server creation is blocked" });
+
+  const users = await readJSON("users.json") || [];
+  const isStaff = user.role === "admin" || user.role === "owner";
+  const requestedOwner = isStaff && owner ? String(owner) : String(user.id);
+  if (!users.some((candidate: any) => candidate.id === requestedOwner)) return res.status(400).json({ error: "Selected server owner was not found" });
+
   const allocations = await readJSON("allocations.json") || [];
   let selectedAllocation:any = null;
-  if (nodeId && nodeId !== "local") {
-    if (!allocationId) return res.status(400).json({ error: "An allocation is required for a remote node." });
-    selectedAllocation = allocations.find((a:any)=>a.id===allocationId && a.nodeId===nodeId && !a.assignedServerId);
+  if (allocationId) {
+    selectedAllocation = allocations.find((a:any)=>a.id===String(allocationId) && a.nodeId===requestedNodeId && !a.assignedServerId);
     if (!selectedAllocation) return res.status(409).json({ error: "Allocation is unavailable or belongs to another node." });
-    if (Number(port) < selectedAllocation.portStart || Number(port) > selectedAllocation.portEnd) return res.status(400).json({ error: "Server port is outside the selected allocation." });
+    if (Number(port) < Number(selectedAllocation.portStart) || Number(port) > Number(selectedAllocation.portEnd)) return res.status(400).json({ error: "Server port is outside the selected allocation." });
+  } else if (requestedNodeId !== "local") {
+    return res.status(400).json({ error: "An allocation is required for a remote node." });
   }
   const id = crypto.randomUUID();
   const serverData = {
     id,
     name,
-    owner: owner || user.id, // Support assigning owner at creation
+    owner: requestedOwner,
     ram,
     cpu: cpu || 100,
     disk: disk || 10,
     port,
     ipAlias: ipAlias || "",
-    nodeId: nodeId || "local",
+    nodeId: requestedNodeId,
     type: type || "PAPER",
     version: version || "1.21.1",
     javaVersion: normalizedJavaVersion || "",
@@ -153,8 +180,8 @@ export const createServer = async (req: Request, res: Response) => {
 
   const servers = await readJSON("servers.json") || [];
   
-  if (servers.find((s: any) => s.port == port)) {
-    res.status(400).json({ error: "Port is already in use by another server." });
+  if (servers.find((s: any) => String(s.nodeId || "local") === requestedNodeId && Number(s.port) === Number(port))) {
+    res.status(400).json({ error: "Port is already in use on the selected node." });
     return;
   }
 
