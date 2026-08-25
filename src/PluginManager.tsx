@@ -35,7 +35,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
       
       if (activeSource === 'all' || activeSource === 'modrinth') {
         promises.push(
-          externalAxios.get(`https://api.modrinth.com/v2/search?query=${q}&facets=[["project_type:plugin"]]&limit=15`)
+          externalAxios.get(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(q)}&facets=${encodeURIComponent('[["project_type:plugin"]]')}&limit=15`)
             .then(res => {
               res.data.hits.forEach((hit: any) => {
                 results.push({
@@ -54,7 +54,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
       
       if (activeSource === 'all' || activeSource === 'spigot') {
         promises.push(
-          externalAxios.get(`https://api.spiget.org/v2/search/resources/${q}?field=name&size=15&page=1`)
+          externalAxios.get(`https://api.spiget.org/v2/search/resources/${encodeURIComponent(q)}?field=name&size=15&page=1`)
             .then(res => {
               if(Array.isArray(res.data)) {
                 res.data.forEach((hit: any) => {
@@ -75,7 +75,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
 
       if (activeSource === 'all' || activeSource === 'hangar') {
         promises.push(
-          externalAxios.get(`https://hangar.papermc.io/api/v1/projects?q=${q}&limit=15`)
+          externalAxios.get(`https://hangar.papermc.io/api/v1/projects?q=${encodeURIComponent(q)}&limit=15`)
             .then(res => {
               if (res.data && res.data.result) {
                 res.data.result.forEach((hit: any) => {

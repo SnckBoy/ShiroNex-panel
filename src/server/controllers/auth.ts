@@ -120,7 +120,7 @@ export const register = async (req: Request, res: Response) => {
   const hashedPassword = await bcrypt.hash(password, 12);
   
   const newUser = {
-    id: "user-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+    id: `user-${crypto.randomUUID()}`,
     username: cleanUsername,
     password: hashedPassword,
     role: "user",
@@ -165,7 +165,7 @@ export const login = async (req: Request, res: Response) => {
       const { writeJSON } = await import("../services/db.js");
       const hashedPassword = await bcrypt.hash(password, 12);
       user = {
-        id: "dev-user-" + Math.random().toString(36).substr(2, 9),
+        id: `dev-user-${crypto.randomUUID()}`,
         username,
         password: hashedPassword,
         role: "user",
@@ -370,7 +370,7 @@ export const googleLogin = async (req: Request, res: Response) => {
 
     const { writeJSON } = await import("../services/db.js");
     user = {
-      id: "google-user-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      id: `google-user-${crypto.randomUUID()}`,
       username: baseUsername,
       email: cleanEmail,
       googleId: cleanGoogleId,
