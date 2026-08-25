@@ -11,6 +11,7 @@ const statusClass = (status: string) => {
   if (status === "INSTALLING") return "border-cyan-400/25 bg-cyan-400/10 text-cyan-200";
   if (status === "ERROR") return "border-rose-400/25 bg-rose-400/10 text-rose-200";
   if (status === "DISABLED") return "border-slate-400/25 bg-slate-400/10 text-slate-300";
+  if (status === "SETUP_REQUIRED") return "border-violet-400/25 bg-violet-400/10 text-violet-200";
   return "border-rose-400/25 bg-rose-400/10 text-rose-300";
 };
 
@@ -28,7 +29,7 @@ export default function Nodes() {
   const [error, setError] = useState("");
   const [health, setHealth] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "6768", location: "", tls: false, memory: "", disk: "", cpu: "", cloudflareZoneId: "", createCloudflareDns: false });
+  const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "6768", location: "", tls: false, memory: "", disk: "", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false });
 
   const load = async () => {
     try {
@@ -149,7 +150,34 @@ export default function Nodes() {
         })}
       </div>
 
-      {open && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"><div className="snx-console-surface max-h-[90svh] w-full max-w-2xl overflow-y-auto rounded-2xl p-5 md:p-6"><h2 className="mb-4 text-xl font-semibold">Create Node</h2><div className="grid gap-3 md:grid-cols-2">{Object.entries(form).map(([key, value]) => key === "tls" || key === "createCloudflareDns" ? null : <input key={key} placeholder={key} value={String(value)} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="rounded-xl border border-border bg-background p-3 text-sm" />)}</div><label className="mt-4 flex gap-2 text-sm"><input type="checkbox" checked={form.createCloudflareDns} onChange={(event) => setForm({ ...form, createCloudflareDns: event.target.checked })} /> Create Cloudflare DNS automatically</label><label className="mt-4 flex gap-2 text-sm"><input type="checkbox" checked={form.tls} onChange={(event) => setForm({ ...form, tls: event.target.checked })} /> TLS enabled</label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="snx-secondary-button">Cancel</button><button type="button" disabled={busy === "create"} onClick={() => void create()} className="snx-primary-button">{busy === "create" ? "Creating…" : "Create"}</button></div></div></div>}
+      {open && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="mx-auto my-6 grid max-w-5xl gap-4 rounded-3xl border border-cyan-300/20 bg-slate-900/95 p-4 shadow-2xl shadow-cyan-950/30 md:p-6 lg:grid-cols-[1fr_1.08fr]">
+            <section className="rounded-2xl border border-white/10 bg-black/15 p-4 md:p-5">
+              <p className="snx-eyebrow"><Server className="h-3.5 w-3.5" /> Basic details</p>
+              <h2 className="mt-2 text-2xl font-semibold">Create a new node</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Create the panel record first. ShiroNex will then generate a one-time token and installation command for the target VPS.</p>
+              <div className="mt-5 space-y-3">
+                <label className="block text-xs font-medium text-muted-foreground">Node name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Production Node 01" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
+                <label className="block text-xs font-medium text-muted-foreground">Description<textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Primary Minecraft workloads" rows={3} className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
+                <label className="block text-xs font-medium text-muted-foreground">Location<input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} placeholder="Frankfurt, DE" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
+                <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium text-muted-foreground">Hostname<input value={form.hostname} onChange={(event) => setForm((current) => ({ ...current, hostname: event.target.value }))} placeholder="node.example.com" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label><label className="block text-xs font-medium text-muted-foreground">FQDN<input value={form.fqdn} onChange={(event) => setForm((current) => ({ ...current, fqdn: event.target.value }))} placeholder="node.example.com" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label></div>
+                <label className="block text-xs font-medium text-muted-foreground">Public IP<input value={form.publicIp} onChange={(event) => setForm((current) => ({ ...current, publicIp: event.target.value }))} placeholder="203.0.113.10" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-white/10 bg-black/15 p-4 md:p-5">
+              <p className="snx-eyebrow"><Wrench className="h-3.5 w-3.5" /> Configuration</p>
+              <h3 className="mt-2 text-lg font-semibold">Daemon resources</h3>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {([['memory','Total memory (MB)','8192'],['disk','Total disk (GB)','100'],['cpu','CPU limit (%)','100'],['apiPort','Daemon port','6768']] as const).map(([key, label, placeholder]) => <label key={key} className="block text-xs font-medium text-muted-foreground">{label}<input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} inputMode="numeric" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>)}
+              </div>
+              <label className="mt-3 block text-xs font-medium text-muted-foreground">Server file directory<input value={form.serverDirectory || "/var/lib/shironex/servers"} onChange={(event) => setForm((current) => ({ ...current, serverDirectory: event.target.value }))} placeholder="/var/lib/shironex/servers" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
+              <div className="mt-5 space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={form.tls} onChange={(event) => setForm((current) => ({ ...current, tls: event.target.checked }))} /> Use HTTPS/TLS for daemon communication</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.createCloudflareDns} onChange={(event) => setForm((current) => ({ ...current, createCloudflareDns: event.target.checked }))} /> Create Cloudflare DNS automatically</label><p className="text-xs leading-5 text-muted-foreground">After creation, run the generated command as root on the node VPS. The one-time token expires after 15 minutes and is never stored in plaintext.</p></div>
+              <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="snx-secondary-button">Cancel</button><button type="button" disabled={busy === "create" || !form.name.trim() || !form.hostname.trim()} onClick={() => void create()} className="snx-primary-button">{busy === "create" ? "Creating…" : "Create Node"}</button></div>
+            </section>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

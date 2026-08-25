@@ -94,6 +94,8 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         source: plugin.provider,
         pluginId: plugin.id,
         pluginName: plugin.name,
+        gameVersion: gameVersion.trim() || undefined,
+        loader: loader.trim() || undefined,
       });
       alert(response.data.message || `${plugin.name} installed successfully. Restart or reload the server to apply it.`);
     } catch (requestError: any) {

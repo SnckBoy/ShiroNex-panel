@@ -18,7 +18,20 @@ const remoteForServer=async(server:any)=>{
  if(!server?.nodeId||server.nodeId==="local") return null;
  const nodes=await readJSON("nodes.json")||[]; const n=nodes.find((x:any)=>x.id===server.nodeId);
  if(!n) throw new Error("Node not found");
+ if(n.disabled) throw new Error("Node is disabled");
+ if(!n.credential && !n.credentialHash) throw new Error("Node has not been registered yet");
  return {id:n.id,baseUrl:`${n.tls===false?"http":"https"}://${n.fqdn||n.hostname}:${n.apiPort}`,credential:decryptSecret(n.credential)};
+};
+
+const nodeStatusForServer=(node:any)=>{
+ if(!node) return null;
+ if(node.maintenance) return "MAINTENANCE";
+ if(node.installing) return "INSTALLING";
+ if(node.error) return "ERROR";
+ if(node.disabled) return "DISABLED";
+ if(node.isLocal && !node.credentialHash) return "SETUP_REQUIRED";
+ const heartbeat=node.lastHeartbeat?Date.parse(node.lastHeartbeat):NaN;
+ return Number.isFinite(heartbeat) && Date.now()-heartbeat<=45_000 ? "ONLINE" : "OFFLINE";
 };
 
 const canManageServer = (req: Request, server: any) => {
@@ -47,7 +60,7 @@ export const getServers = async (req: Request, res: Response) => {
       ...next,
       nodeId: server.nodeId || "local",
       nodeName: nodeRecord?.name || (server.nodeId === "local" ? "Local Node" : "Unknown node"),
-      nodeStatus: nodeRecord?.disabled ? "DISABLED" : nodeRecord?.status || null,
+      nodeStatus: nodeStatusForServer(nodeRecord),
       ownerUsername: ownerRecord?.username || server.owner || "Unassigned",
       address: `${server.ipAlias || nodeRecord?.publicIp || nodeRecord?.hostname || "127.0.0.1"}:${server.port || "—"}`,
       lastActivity: server.updatedAt || server.lastActivity || server.createdAt || null,
@@ -868,30 +881,56 @@ export const deleteBackup = async (req: Request, res: Response) => {
     res.status(500).json({ error: e.message });
   }
 };
+const MAX_MARKETPLACE_FILE_BYTES = 80 * 1024 * 1024;
+const marketplaceFilename = (value: unknown, fallback: string) => {
+  const name = path.basename(String(value || fallback)).replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (!name || name === "." || name === ".." || !name.toLowerCase().endsWith(".jar")) return fallback;
+  return name;
+};
+const downloadMarketplaceBinary = async (url: string) => {
+  const response = await axios.get<ArrayBuffer>(url, { responseType: "arraybuffer", timeout: 60_000, maxContentLength: MAX_MARKETPLACE_FILE_BYTES, maxBodyLength: MAX_MARKETPLACE_FILE_BYTES, headers: { "User-Agent": "ShiroNex-Panel/1.0 marketplace" } });
+  const bytes = Buffer.from(response.data);
+  if (!bytes.length || bytes.length > MAX_MARKETPLACE_FILE_BYTES) throw new Error("Marketplace file is empty or too large");
+  return bytes;
+};
+const writeMarketplaceBinary = async (req: Request, serverId: string, relativePath: string, bytes: Buffer) => {
+  const remote = await remoteForServer((req as any).server);
+  if (remote) return nodeControl.writeBase64(remote, serverId, relativePath, bytes.toString("base64"));
+  const target = path.join(process.cwd(), ".data", "servers", serverId, relativePath);
+  await fs.ensureDir(path.dirname(target));
+  await fs.writeFile(target, bytes);
+  return { success: true };
+};
+const collectArchiveFiles = async (root: string, current = ""): Promise<Array<{ path: string; content: string }>> => {
+  const directory = path.join(root, current);
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const files: Array<{ path: string; content: string }> = [];
+  for (const entry of entries) {
+    const rel = path.posix.join(current.split(path.sep).join("/"), entry.name);
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await collectArchiveFiles(root, path.join(current, entry.name)));
+    else if (entry.isFile() && entry.name !== "modrinth.index.json") {
+      const bytes = await fs.readFile(absolute);
+      files.push({ path: rel, content: bytes.toString("base64") });
+    }
+  }
+  return files;
+};
+
 export const installPlugin = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { source, pluginId, pluginName } = req.body;
+  const { source, pluginId, pluginName, gameVersion, loader } = req.body;
   
   // Allow direct downloadUrl fallback for backward compatibility
   if (req.body.downloadUrl) {
-     try {
-        const serverDir = path.join(process.cwd(), ".data", "servers", id);
-        const pluginsDir = path.join(serverDir, "plugins");
-        await fs.ensureDir(pluginsDir);
-        const filePath = path.join(pluginsDir, req.body.filename);
-        if (req.body.downloadUrl === 'dummy') {
-          await fs.writeFile(filePath, '');
-        } else {
-          const axios = (await import("axios")).default;
-          const response = await axios({ url: req.body.downloadUrl, method: 'GET', responseType: 'stream' });
-          const writer = fs.createWriteStream(filePath);
-          response.data.pipe(writer);
-          await new Promise<void>((resolve, reject) => { writer.on('finish', resolve); writer.on('error', reject); });
-        }
-        return res.json({ success: true, message: "Plugin installed successfully" });
-     } catch(e) {
-        return res.status(500).json({ error: "Failed to install plugin" });
-     }
+    try {
+      const filename = marketplaceFilename(req.body.filename, "plugin.jar");
+      const bytes = req.body.downloadUrl === "dummy" ? Buffer.alloc(0) : await downloadMarketplaceBinary(String(req.body.downloadUrl));
+      await writeMarketplaceBinary(req, id, `plugins/${filename}`, bytes);
+      return res.json({ success: true, message: "Plugin installed successfully" });
+    } catch (e: any) {
+      return res.status(502).json({ error: e?.message || "Failed to install plugin" });
+    }
   }
 
   if (!source || !pluginId || !pluginName) {
@@ -937,7 +976,12 @@ export const installPlugin = async (req: Request, res: Response) => {
     };
 
     if (source === 'modrinth') {
-      const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
+      const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`, {
+        params: {
+          game_versions: typeof gameVersion === "string" && gameVersion.trim() ? JSON.stringify([gameVersion.trim()]) : undefined,
+          loaders: typeof loader === "string" && loader.trim() ? JSON.stringify([loader.trim().toLowerCase()]) : undefined,
+        },
+      });
       if (verRes.data && verRes.data.length > 0) {
         const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
         if (file) {
@@ -992,23 +1036,8 @@ export const installPlugin = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Could not find a valid download URL for this plugin." });
     }
 
-    const filePath = path.join(pluginsDir, filename);
-    const response = await axios({
-      url: downloadUrl,
-      method: 'GET',
-      responseType: 'stream',
-      headers: {
-         'User-Agent': 'React-Minecraft-Panel/1.0'
-      }
-    });
-
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    await new Promise<void>((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
+    const bytes = await downloadMarketplaceBinary(String(downloadUrl));
+    await writeMarketplaceBinary(req, id, `plugins/${marketplaceFilename(filename, "plugin.jar")}`, bytes);
 
     res.json({ success: true, message: "Plugin installed successfully" });
   } catch (error: any) {
@@ -1026,12 +1055,8 @@ export const installMod = async (req: Request, res: Response) => {
   }
 
   try {
-    const serverDir = path.join(process.cwd(), ".data", "servers", id);
-    const modsDir = path.join(serverDir, "mods");
-    await fs.ensureDir(modsDir);
-    
     let downloadUrl = null;
-    let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
+    let filename = marketplaceFilename(`${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`, "mod.jar");
     const axios = (await import("axios")).default;
 
     const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
@@ -1039,7 +1064,7 @@ export const installMod = async (req: Request, res: Response) => {
       const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
       if (file) {
           downloadUrl = file.url;
-          filename = file.filename || filename;
+          filename = marketplaceFilename(file.filename, filename);
       }
     }
 
@@ -1047,23 +1072,8 @@ export const installMod = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Could not find a valid download URL for this mod." });
     }
 
-    const filePath = path.join(modsDir, filename);
-    const response = await axios({
-      url: downloadUrl,
-      method: 'GET',
-      responseType: 'stream',
-      headers: {
-         'User-Agent': 'React-Minecraft-Panel/1.0'
-      }
-    });
-
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    await new Promise<void>((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
+    const bytes = await downloadMarketplaceBinary(String(downloadUrl));
+    await writeMarketplaceBinary(req, id, `mods/${marketplaceFilename(filename, "mod.jar")}`, bytes);
 
     res.json({ success: true, message: "Mod installed successfully" });
   } catch (error: any) {
@@ -1192,15 +1202,18 @@ export const importModpack = async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Only .zip and .mrpack archives are supported" });
   }
 
+  const remote = await remoteForServer((req as any).server);
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
   const backupsDir = path.join(process.cwd(), ".data", "backups", id);
   const tempDir = path.join(process.cwd(), ".data", "temp", `modpack-${crypto.randomUUID()}`);
   const confirmReplace = req.body?.confirmReplace === true || req.body?.confirmReplace === "true";
 
   try {
-    await fs.ensureDir(serverDir);
-    const existing = await fs.readdir(serverDir);
+    await fs.ensureDir(tempDir);
+    const existing = remote ? [] : await fs.readdir(serverDir);
     if (existing.length > 0 && !confirmReplace) {
+      await fs.remove(uploaded.path).catch(() => undefined);
+      await fs.remove(tempDir).catch(() => undefined);
       return res.status(409).json({ error: "This server already contains files. Create a backup and confirm replacement before importing.", requiresConfirmation: true });
     }
 
@@ -1218,9 +1231,24 @@ export const importModpack = async (req: Request, res: Response) => {
     }
 
     const entries = await extractZipSafely(uploaded.path, tempDir);
-    const manifestPath = path.join(tempDir, "modrinth.index.json");
     const overridesPath = path.join(tempDir, "overrides");
     const sourcePath = await fs.pathExists(overridesPath) ? overridesPath : tempDir;
+    if (remote) {
+      const files = await collectArchiveFiles(sourcePath);
+      try {
+        await nodeControl.replaceBatch(remote, id, files, confirmReplace);
+      } catch (error: any) {
+        if (error?.response?.status === 409) {
+          await fs.remove(uploaded.path).catch(() => undefined);
+          await fs.remove(tempDir).catch(() => undefined);
+          return res.status(409).json(error.response.data);
+        }
+        throw error;
+      }
+      await fs.remove(uploaded.path);
+      await fs.remove(tempDir);
+      return res.json({ success: true, entries: files.length, backupFilename: null, message: "Archive validated and imported on the remote node. Review the files before starting." });
+    }
     await copyDirectorySafely(sourcePath, serverDir);
     await fs.remove(uploaded.path);
     await fs.remove(tempDir);

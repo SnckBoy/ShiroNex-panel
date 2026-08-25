@@ -9,7 +9,8 @@ import {createDns} from "../services/cloudflare.js";
 import {nodeControl} from "../services/nodeClient.js";
 const router=express.Router();router.use(requireAdmin,rateLimit());
 const file="nodes.json", setupFile="node_setup_tokens.json";
-const initNodes=async()=>{const n=await readJSON(file);if(!n){await writeJSON(file,[{id:"local",name:"Local Node",description:"Panel host",hostname:"127.0.0.1",fqdn:"127.0.0.1",publicIp:"127.0.0.1",apiPort:6767,tls:false,isLocal:true,disabled:false,createdAt:new Date().toISOString(),lastHeartbeat:null,lastStats:null}])}};initNodes();
+// Nodes are created explicitly by an administrator. Panel-only installs must not
+// manufacture a misleading local node before a daemon has been installed and registered.
 
 const sanitize=(n:any)=>{const {credential,credentialHash,...safe}=n;return safe};
 const HEARTBEAT_TIMEOUT_MS = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
@@ -19,6 +20,7 @@ const nodeStatus=(n:any, now=Date.now())=>{
  if (n.installing) return "INSTALLING";
  if (n.error) return "ERROR";
  if (n.disabled) return "DISABLED";
+ if (n.isLocal && !n.credentialHash) return "SETUP_REQUIRED";
  return Number.isFinite(lastHeartbeat) && now - lastHeartbeat <= HEARTBEAT_TIMEOUT_MS ? "ONLINE" : "OFFLINE";
 };
 const withNodeStatus=(n:any, now=Date.now())=>({...sanitize(n),status:nodeStatus(n,now),lastHeartbeat:n.lastHeartbeat||null,heartbeatAgeMs:n.lastHeartbeat&&Number.isFinite(Date.parse(n.lastHeartbeat))?Math.max(0,now-Date.parse(n.lastHeartbeat)):null});
