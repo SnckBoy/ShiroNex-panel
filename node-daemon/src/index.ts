@@ -12,7 +12,20 @@ const cfg: any = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "20mb" }));
-const docker = new Docker({ socketPath: cfg.dockerSocket || "/var/run/docker.sock" });
+const dockerSocket = cfg.dockerSocket || "/var/run/docker.sock";
+const docker = new Docker({ socketPath: dockerSocket });
+const dockerError = (error: any) => {
+  const code = String(error?.code || "");
+  const raw = String(error?.message || error || "Docker operation failed");
+  if (code === "ENOENT" || raw.includes("ENOENT") || raw.includes("docker.sock")) return `Docker is unavailable. Install and start Docker Engine, then ensure ${dockerSocket} is accessible to the ShiroNex daemon.`;
+  if (code === "EACCES" || raw.includes("EACCES")) return `Docker socket permission denied. Add the ShiroNex daemon user to the docker group or grant access to ${dockerSocket}, then restart the daemon.`;
+  if (code === "ECONNREFUSED" || raw.includes("ECONNREFUSED")) return "Docker is installed but not running. Start Docker Engine and restart the ShiroNex daemon.";
+  return raw;
+};
+const dockerStatusCode = (error: any) => {
+  const raw = String(error?.code || error?.message || error || "");
+  return /ENOENT|EACCES|ECONNREFUSED|docker\.sock/i.test(raw) ? 503 : 502;
+};
 const serversDir = path.resolve(cfg.serverDirectory || "/var/lib/shironex/servers");
 fs.mkdirSync(serversDir, { recursive: true, mode: 0o750 });
 
@@ -72,14 +85,14 @@ app.post("/v1/servers", auth, async (req,res) => {
   const env=[`TYPE=${type}`,`VERSION=${d.version||"latest"}`,"EULA=TRUE",`SERVER_PORT=${port}`,"ENABLE_RCON=true",`RCON_PASSWORD=${d.rconPassword||crypto.randomBytes(24).toString("hex")}`];
   const c=await docker.createContainer({Image:image,name:`shironex-${id}`,Labels:{"com.shironex.server":id,"com.shironex.managed":"true"},Env:env,Tty:true,OpenStdin:true,ExposedPorts:{[`${port}/tcp`]:{}},HostConfig:{Memory:Math.floor(ramGb*1024*1024*1024),NanoCpus:Math.max(1,Number(d.cpu||100))*10_000_000,PortBindings:{[`${port}/tcp`]:[{HostPort:String(port)}]},Binds:[`${dir}:/data`],RestartPolicy:{Name:"unless-stopped"}}});
   res.status(201).json({containerId:c.id});
- } catch(e:any){ res.status(500).json({error:e?.message||"Container creation failed"}); }
+ } catch(e:any){ res.status(dockerStatusCode(e)).json({error:dockerError(e),dockerUnavailable:dockerStatusCode(e)===503}); }
 });
-for (const [route,method] of [["start","start"],["stop","stop"],["restart","restart"],["kill","kill"]] as const) app.post(`/v1/servers/:id/${route}`,auth,async(req,res)=>{try{const container:any=await find(req.params.id);await container[method]();res.json({success:true})}catch(e:any){res.status(502).json({error:e.message})}});
-app.delete("/v1/servers/:id",auth,async(req,res)=>{try{const c=find(req.params.id);try{const i=await c.inspect();if(i.State.Running)await c.stop({t:10})}catch{}await c.remove({force:true});res.json({success:true})}catch(e:any){res.status(502).json({error:e.message})}});
-app.get("/v1/servers/:id/status",auth,async(req,res)=>{try{res.json(await find(req.params.id).inspect())}catch(e:any){res.status(404).json({error:e.message})}});
+for (const [route,method] of [["start","start"],["stop","stop"],["restart","restart"],["kill","kill"]] as const) app.post(`/v1/servers/:id/${route}`,auth,async(req,res)=>{try{const container:any=await find(req.params.id);await container[method]();res.json({success:true})}catch(e:any){res.status(dockerStatusCode(e)).json({error:dockerError(e),dockerUnavailable:dockerStatusCode(e)===503})}});
+app.delete("/v1/servers/:id",auth,async(req,res)=>{try{const c=find(req.params.id);try{const i=await c.inspect();if(i.State.Running)await c.stop({t:10})}catch{}await c.remove({force:true});res.json({success:true})}catch(e:any){res.status(dockerStatusCode(e)).json({error:dockerError(e),dockerUnavailable:dockerStatusCode(e)===503})}});
+app.get("/v1/servers/:id/status",auth,async(req,res)=>{try{res.json(await find(req.params.id).inspect())}catch(e:any){res.status(dockerStatusCode(e)).json({error:dockerError(e),dockerUnavailable:dockerStatusCode(e)===503})}});
 app.get("/v1/servers/:id/stats",auth,async(req,res)=>{try{const c=find(req.params.id),i=await c.inspect();if(!i.State.Running)return res.json({available:true,timestamp:Date.now(),cpu:0,ram:0,disk:null,networkRxBytes:0,networkTxBytes:0});const x:any=await c.stats({stream:false});const cpuDelta=x.cpu_stats.cpu_usage.total_usage-x.precpu_stats.cpu_usage.total_usage;const sysDelta=x.cpu_stats.system_cpu_usage-x.precpu_stats.system_cpu_usage;const cpus=x.cpu_stats.online_cpus||1;const cache=x.memory_stats.stats?.cache||x.memory_stats.stats?.inactive_file||0;const cpu=sysDelta>0&&cpuDelta>=0?cpuDelta/sysDelta*cpus*100:null;const usedMemory=Number(x.memory_stats.usage)-Number(cache);let networkRxBytes=0,networkTxBytes=0,networkAvailable=false;for(const n of Object.values(x.networks||{}) as any[]){networkRxBytes+=Number(n.rx_bytes)||0;networkTxBytes+=Number(n.tx_bytes)||0;networkAvailable=true;}res.json({available:true,timestamp:Date.now(),cpu,ram:Number.isFinite(usedMemory)&&usedMemory>=0?usedMemory/1024/1024:null,disk:null,networkRxBytes:networkAvailable?networkRxBytes:null,networkTxBytes:networkAvailable?networkTxBytes:null})}catch(e:any){res.status(502).json({available:false,timestamp:Date.now(),cpu:null,ram:null,disk:null,networkRxBytes:null,networkTxBytes:null,error:e.message})}});
-app.get("/v1/servers/:id/logs",auth,async(req,res)=>{try{const b=await find(req.params.id).logs({stdout:true,stderr:true,tail:200});res.type("text/plain").send(b.toString("utf8"))}catch(e:any){res.status(502).send(e.message)}});
-app.post("/v1/servers/:id/command",auth,async(req,res)=>{try{const e=await find(req.params.id).exec({Cmd:["rcon-cli",String(req.body.command||"")],AttachStdout:true,AttachStderr:true});await e.start({});res.json({success:true})}catch(e:any){res.status(502).json({error:e.message})}});
+app.get("/v1/servers/:id/logs",auth,async(req,res)=>{try{const b=await find(req.params.id).logs({stdout:true,stderr:true,tail:200});res.type("text/plain").send(b.toString("utf8"))}catch(e:any){res.status(dockerStatusCode(e)).json({error:dockerError(e),dockerUnavailable:dockerStatusCode(e)===503})}});
+app.post("/v1/servers/:id/command",auth,async(req,res)=>{try{const e=await find(req.params.id).exec({Cmd:["rcon-cli",String(req.body.command||"")],AttachStdout:true,AttachStderr:true});await e.start({});res.json({success:true})}catch(e:any){res.status(dockerStatusCode(e)).json({error:dockerError(e),dockerUnavailable:dockerStatusCode(e)===503})}});
 app.post("/v1/servers/:id/files/list",auth,async(req,res)=>{try{const p=safePath(req.params.id,req.body.path||"."),entries=fs.readdirSync(p,{withFileTypes:true}).map(x=>({name:x.name,isDirectory:x.isDirectory(),size:x.isDirectory()?0:fs.statSync(path.join(p,x.name)).size}));res.json(entries)}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/v1/servers/:id/files/read",auth,async(req,res)=>{try{res.json({isFile:true,content:fs.readFileSync(safePath(req.params.id,req.body.path),"utf8")})}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/v1/servers/:id/files/write",auth,async(req,res)=>{try{const p=safePath(req.params.id,req.body.path);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,String(req.body.content||""),"utf8");res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
