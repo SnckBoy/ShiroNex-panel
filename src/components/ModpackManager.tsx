@@ -82,7 +82,7 @@ export default function ModpackManager({ serverId }: { serverId: string }) {
 
   const installRemote = async (item: MarketplaceItem, confirmReplace = false): Promise<boolean> => {
     try {
-      await axios.post(`/api/servers/${serverId}/modpacks/install`, {
+      const response = await axios.post(`/api/servers/${serverId}/modpacks/install`, {
         provider: item.provider,
         projectId: item.id,
         projectName: item.name,
@@ -90,7 +90,9 @@ export default function ModpackManager({ serverId }: { serverId: string }) {
         loader: loader.trim() || undefined,
         confirmReplace,
       });
-      setNotice(`${item.name} was validated and imported. Review the files before starting the server.`);
+      const detected = response.data.detectedRuntime;
+      const runtimeNote = detected?.runtimeType ? ` Detected runtime: ${detected.runtimeType}${detected.minecraftVersion ? ` ${detected.minecraftVersion}` : ""}.` : "";
+      setNotice(`${item.name} was validated and imported. Review the files before starting the server.${runtimeNote}`);
       return true;
     } catch (requestError: any) {
       if (requestError.response?.status === 409 && requestError.response?.data?.requiresConfirmation && !confirmReplace) {
@@ -118,10 +120,12 @@ export default function ModpackManager({ serverId }: { serverId: string }) {
     form.append("archive", file);
     form.append("confirmReplace", String(confirmReplace));
     try {
-      await axios.post(`/api/servers/${serverId}/modpacks/import`, form, {
+      const response = await axios.post(`/api/servers/${serverId}/modpacks/import`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setNotice(`${file.name} was validated and imported. Review the files before starting the server.`);
+      const detected = response.data.detectedRuntime;
+      const runtimeNote = detected?.runtimeType ? ` Detected runtime: ${detected.runtimeType}${detected.minecraftVersion ? ` ${detected.minecraftVersion}` : ""}.` : "";
+      setNotice(`${file.name} was validated and imported. Review the files before starting the server.${runtimeNote}`);
       return true;
     } catch (requestError: any) {
       if (requestError.response?.status === 409 && requestError.response?.data?.requiresConfirmation && !confirmReplace) {

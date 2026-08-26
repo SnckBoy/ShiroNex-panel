@@ -1007,7 +1007,19 @@ const buildMrpackInstallTree = async (archiveRoot: string, outputRoot: string) =
     const overridePath = path.join(archiveRoot, override);
     if (await fs.pathExists(overridePath)) await copyDirectorySafely(overridePath, outputRoot);
   }
-  return { name: String(manifest.name || "Modrinth pack"), files: totalBytes };
+  const dependencies = manifest.dependencies && typeof manifest.dependencies === "object" ? manifest.dependencies : {};
+  const runtimeType = dependencies["fabric-loader"] ? "FABRIC" : dependencies.forge ? "FORGE" : dependencies.neoforge ? "NEOFORGE" : dependencies["quilt-loader"] ? "QUILT" : null;
+  return { name: String(manifest.name || "Modrinth pack"), files: totalBytes, runtimeType, minecraftVersion: typeof dependencies.minecraft === "string" ? dependencies.minecraft : null };
+};
+const persistDetectedMrpackRuntime = async (serverId: string, detected: { runtimeType: string | null; minecraftVersion: string | null }) => {
+  if (!detected.runtimeType && !detected.minecraftVersion) return;
+  const servers = await readJSON("servers.json") || [];
+  const server = servers.find((candidate: any) => candidate.id === serverId);
+  if (!server) return;
+  if (detected.runtimeType) server.type = detected.runtimeType;
+  if (detected.minecraftVersion) server.version = detected.minecraftVersion;
+  server.runtimeDetectedAt = new Date().toISOString();
+  await writeJSON("servers.json", servers);
 };
 const collectArchiveFiles = async (root: string, current = ""): Promise<Array<{ path: string; content: string }>> => {
   const directory = path.join(root, current);
@@ -1328,9 +1340,10 @@ export const importModpack = async (req: Request, res: Response) => {
     const entries = await extractZipSafely(uploaded.path, tempDir);
     const isMrpack = originalName.endsWith(".mrpack");
     let sourcePath = tempDir;
+    let detectedRuntime: { runtimeType: string | null; minecraftVersion: string | null } = { runtimeType: null, minecraftVersion: null };
     if (isMrpack) {
       sourcePath = path.join(tempDir, "compiled");
-      await buildMrpackInstallTree(tempDir, sourcePath);
+      detectedRuntime = await buildMrpackInstallTree(tempDir, sourcePath);
     } else {
       const overridesPath = path.join(tempDir, "overrides");
       sourcePath = await fs.pathExists(overridesPath) ? overridesPath : tempDir;
@@ -1347,15 +1360,17 @@ export const importModpack = async (req: Request, res: Response) => {
         }
         throw error;
       }
+      await persistDetectedMrpackRuntime(id, detectedRuntime);
       await fs.remove(uploaded.path);
       await fs.remove(tempDir);
-      return res.json({ success: true, entries: files.length, backupFilename: null, message: isMrpack ? "Modrinth pack dependencies were verified and imported on the remote node. Review the files before starting." : "Archive validated and imported on the remote node. Review the files before starting." });
+      return res.json({ success: true, entries: files.length, backupFilename: null, detectedRuntime, message: isMrpack ? "Modrinth pack dependencies were verified and imported on the remote node. Runtime settings were detected from the manifest." : "Archive validated and imported on the remote node. Review the files before starting." });
     }
     await copyDirectorySafely(sourcePath, serverDir);
     const installedEntries = isMrpack ? (await collectArchiveFiles(sourcePath)).length : entries.length;
+    await persistDetectedMrpackRuntime(id, detectedRuntime);
     await fs.remove(uploaded.path);
     await fs.remove(tempDir);
-    res.json({ success: true, entries: installedEntries, backupFilename, message: isMrpack ? "Modrinth pack dependencies were verified and imported. Review the files before starting." : "Archive validated and imported. Review the files before starting." });
+    res.json({ success: true, entries: installedEntries, backupFilename, detectedRuntime, message: isMrpack ? "Modrinth pack dependencies were verified and imported. Runtime settings were detected from the manifest." : "Archive validated and imported. Review the files before starting." });
   } catch (error: any) {
     await fs.remove(uploaded.path).catch(() => undefined);
     await fs.remove(tempDir).catch(() => undefined);
