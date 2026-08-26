@@ -905,11 +905,31 @@ const marketplaceFilename = (value: unknown, fallback: string) => {
   if (!name || name === "." || name === ".." || !name.toLowerCase().endsWith(".jar")) return fallback;
   return name;
 };
+const TRUSTED_MARKETPLACE_HOSTS = new Set(["cdn.modrinth.com", "api.modrinth.com", "api.spiget.org", "hangar.papermc.io", "github.com", "raw.githubusercontent.com", "objects.githubusercontent.com"]);
 const downloadMarketplaceBinary = async (url: string) => {
-  const response = await axios.get<ArrayBuffer>(url, { responseType: "arraybuffer", timeout: 60_000, maxContentLength: MAX_MARKETPLACE_FILE_BYTES, maxBodyLength: MAX_MARKETPLACE_FILE_BYTES, headers: { "User-Agent": "ShiroNex-Panel/1.0 marketplace" } });
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" || !TRUSTED_MARKETPLACE_HOSTS.has(parsed.hostname)) throw new Error("Marketplace download host is not trusted");
+  const response = await axios.get<ArrayBuffer>(parsed.toString(), { responseType: "arraybuffer", timeout: 60_000, maxContentLength: MAX_MARKETPLACE_FILE_BYTES, maxBodyLength: MAX_MARKETPLACE_FILE_BYTES, headers: { "User-Agent": "ShiroNex-Panel/1.0 marketplace" } });
   const bytes = Buffer.from(response.data);
   if (!bytes.length || bytes.length > MAX_MARKETPLACE_FILE_BYTES) throw new Error("Marketplace file is empty or too large");
   return bytes;
+};
+const resolveModrinthVersion = async (projectId: string, gameVersion?: unknown, loader?: unknown) => {
+  const params: Record<string, string> = { include_changelog: "false" };
+  const version = typeof gameVersion === "string" ? gameVersion.trim() : "";
+  const platform = typeof loader === "string" ? loader.trim().toLowerCase() : "";
+  if (version) params.game_versions = JSON.stringify([version]);
+  if (platform) params.loaders = JSON.stringify([platform]);
+  const response = await axios.get(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version`, { params, timeout: 12_000, headers: { "User-Agent": "ShiroNex-Panel/1.0 marketplace" } });
+  const versions = Array.isArray(response.data) ? response.data.filter((candidate: any) => Array.isArray(candidate.files) && candidate.files.length > 0) : [];
+  versions.sort((left: any, right: any) => {
+    const releaseRank = (value: unknown) => value === "release" ? 0 : value === "beta" ? 1 : 2;
+    return releaseRank(left.version_type) - releaseRank(right.version_type) || String(right.date_published || "").localeCompare(String(left.date_published || ""));
+  });
+  const selected = versions[0];
+  const file = selected?.files?.find((candidate: any) => candidate.primary) || selected?.files?.[0];
+  if (!selected || !file?.url) throw new Error("No compatible downloadable Modrinth version was found");
+  return { version: selected, file };
 };
 const writeMarketplaceBinary = async (req: Request, serverId: string, relativePath: string, bytes: Buffer) => {
   const remote = await remoteForServer((req as any).server);
@@ -918,6 +938,76 @@ const writeMarketplaceBinary = async (req: Request, serverId: string, relativePa
   await fs.ensureDir(path.dirname(target));
   await fs.writeFile(target, bytes);
   return { success: true };
+};
+const safePluginFilename = (value: unknown) => {
+  const filename = path.basename(String(value || ""));
+  if (!/^[a-zA-Z0-9._-]+\.jar$/i.test(filename)) throw new Error("Invalid plugin filename");
+  return filename;
+};
+export const listInstalledPlugins = async (req: Request, res: Response) => {
+  const server = (req as any).server;
+  try {
+    const remote = await remoteForServer(server);
+    if (remote) {
+      const entries = await nodeControl.files(remote, server.id, "list", { path: "plugins" });
+      return res.json({ items: (Array.isArray(entries) ? entries : []).filter((entry: any) => entry?.isFile && /\.jar$/i.test(String(entry.name))).map((entry: any) => ({ filename: entry.name, size: Number(entry.size) || 0 })) });
+    }
+    const directory = path.join(process.cwd(), ".data", "servers", server.id, "plugins");
+    const entries = await fs.pathExists(directory) ? await fs.readdir(directory, { withFileTypes: true }) : [];
+    const items = await Promise.all(entries.filter((entry) => entry.isFile() && /\.jar$/i.test(entry.name)).map(async (entry) => ({ filename: entry.name, size: (await fs.stat(path.join(directory, entry.name))).size })));
+    return res.json({ items });
+  } catch (error: any) {
+    return res.status(502).json({ error: error?.message || "Unable to read installed plugins" });
+  }
+};
+export const removeInstalledPlugin = async (req: Request, res: Response) => {
+  const server = (req as any).server;
+  try {
+    const filename = safePluginFilename(req.params.filename);
+    const remote = await remoteForServer(server);
+    if (remote) await nodeControl.files(remote, server.id, "delete", { paths: [`plugins/${filename}`] });
+    else await fs.remove(path.join(process.cwd(), ".data", "servers", server.id, "plugins", filename));
+    return res.json({ success: true, filename });
+  } catch (error: any) {
+    return res.status(400).json({ error: error?.message || "Unable to remove plugin" });
+  }
+};
+const isSafeRelativeMarketplacePath = (value: unknown) => {
+  const normalized = String(value || "").replace(/\\/g, "/");
+  return Boolean(normalized) && !normalized.startsWith("/") && !normalized.startsWith("\\") && !/^[A-Za-z]:/.test(normalized) && !normalized.split("/").some((part) => part === ".." || part === "");
+};
+const verifyMarketplaceHash = (bytes: Buffer, hashes: any) => {
+  if (!hashes || typeof hashes !== "object") return;
+  if (typeof hashes.sha512 === "string" && crypto.createHash("sha512").update(bytes).digest("hex") !== hashes.sha512.toLowerCase()) throw new Error("Modrinth file SHA-512 verification failed");
+  if (typeof hashes.sha1 === "string" && crypto.createHash("sha1").update(bytes).digest("hex") !== hashes.sha1.toLowerCase()) throw new Error("Modrinth file SHA-1 verification failed");
+};
+const buildMrpackInstallTree = async (archiveRoot: string, outputRoot: string) => {
+  const manifestPath = path.join(archiveRoot, "modrinth.index.json");
+  if (!(await fs.pathExists(manifestPath))) throw new Error("The .mrpack archive is missing modrinth.index.json");
+  const manifest = await fs.readJSON(manifestPath);
+  if (manifest?.formatVersion !== 1 || manifest?.game !== "minecraft" || !Array.isArray(manifest.files)) throw new Error("Unsupported or invalid Modrinth pack manifest");
+  await fs.ensureDir(outputRoot);
+  let totalBytes = 0;
+  for (const entry of manifest.files) {
+    const relativePath = String(entry?.path || "").replace(/\\/g, "/");
+    if (!isSafeRelativeMarketplacePath(relativePath)) throw new Error("Modrinth manifest contains an unsafe file path");
+    if (entry?.env?.server === "unsupported") continue;
+    const downloads = Array.isArray(entry?.downloads) ? entry.downloads.filter((value: unknown) => typeof value === "string") : [];
+    const url = downloads[0] || "";
+    if (!url) throw new Error(`Modrinth manifest has no download URL for ${relativePath}`);
+    const bytes = await downloadMarketplaceBinary(url);
+    totalBytes += bytes.length;
+    if (totalBytes > 512 * 1024 * 1024) throw new Error("Modrinth pack dependencies exceed the 512 MB safety limit");
+    verifyMarketplaceHash(bytes, entry.hashes);
+    const target = path.join(outputRoot, relativePath);
+    await fs.ensureDir(path.dirname(target));
+    await fs.writeFile(target, bytes);
+  }
+  for (const override of ["overrides", "server-overrides"]) {
+    const overridePath = path.join(archiveRoot, override);
+    if (await fs.pathExists(overridePath)) await copyDirectorySafely(overridePath, outputRoot);
+  }
+  return { name: String(manifest.name || "Modrinth pack"), files: totalBytes };
 };
 const collectArchiveFiles = async (root: string, current = ""): Promise<Array<{ path: string; content: string }>> => {
   const directory = path.join(root, current);
@@ -938,12 +1028,15 @@ const collectArchiveFiles = async (root: string, current = ""): Promise<Array<{ 
 export const installPlugin = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { source, pluginId, pluginName, gameVersion, loader } = req.body;
+  const server = (req as any).server || {};
+  const effectiveGameVersion = typeof gameVersion === "string" && gameVersion.trim() ? gameVersion.trim() : String(server.version || "").trim();
+  const effectiveLoader = typeof loader === "string" && loader.trim() ? loader.trim() : String(server.type || "").trim().toLowerCase();
   
   // Allow direct downloadUrl fallback for backward compatibility
   if (req.body.downloadUrl) {
     try {
       const filename = marketplaceFilename(req.body.filename, "plugin.jar");
-      const bytes = req.body.downloadUrl === "dummy" ? Buffer.alloc(0) : await downloadMarketplaceBinary(String(req.body.downloadUrl));
+      const bytes = await downloadMarketplaceBinary(String(req.body.downloadUrl));
       await writeMarketplaceBinary(req, id, `plugins/${filename}`, bytes);
       return res.json({ success: true, message: "Plugin installed successfully" });
     } catch (e: any) {
@@ -994,20 +1087,10 @@ export const installPlugin = async (req: Request, res: Response) => {
     };
 
     if (source === 'modrinth') {
-      const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`, {
-        params: {
-          game_versions: typeof gameVersion === "string" && gameVersion.trim() ? JSON.stringify([gameVersion.trim()]) : undefined,
-          loaders: typeof loader === "string" && loader.trim() ? JSON.stringify([loader.trim().toLowerCase()]) : undefined,
-        },
-      });
-      if (verRes.data && verRes.data.length > 0) {
-        const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
-        if (file) {
-           downloadUrl = file.url;
-           filename = file.filename || filename;
-        }
-      }
-    } else if (source === 'spigot') {
+      const resolved = await resolveModrinthVersion(pluginId, effectiveGameVersion, effectiveLoader);
+      downloadUrl = resolved.file.url;
+      filename = resolved.file.filename || filename;
+    } else if (source === 'spiget' || source === 'spigot') {
        const apiRes = await axios.get(`https://api.spiget.org/v2/resources/${pluginId}`);
        if (apiRes.data && apiRes.data.file) {
          if (apiRes.data.file.type === 'external' && apiRes.data.file.externalUrl) {
@@ -1066,7 +1149,10 @@ export const installPlugin = async (req: Request, res: Response) => {
 
 export const installMod = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { pluginId, pluginName } = req.body; 
+  const { pluginId, pluginName, gameVersion, loader } = req.body;
+  const server = (req as any).server || {};
+  const effectiveGameVersion = typeof gameVersion === "string" && gameVersion.trim() ? gameVersion.trim() : String(server.version || "").trim();
+  const effectiveLoader = typeof loader === "string" && loader.trim() ? loader.trim() : String(server.type || "").trim().toLowerCase();
 
   if (!pluginId || !pluginName) {
     return res.status(400).json({ error: "Missing pluginId or pluginName" });
@@ -1077,13 +1163,10 @@ export const installMod = async (req: Request, res: Response) => {
     let filename = marketplaceFilename(`${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`, "mod.jar");
     const axios = (await import("axios")).default;
 
-    const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
-    if (verRes.data && verRes.data.length > 0) {
-      const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
-      if (file) {
-          downloadUrl = file.url;
-          filename = marketplaceFilename(file.filename, filename);
-      }
+    const resolved = await resolveModrinthVersion(pluginId, effectiveGameVersion, effectiveLoader);
+    if (resolved?.file) {
+      downloadUrl = resolved.file.url;
+      filename = marketplaceFilename(resolved.file.filename, filename);
     }
 
     if (!downloadUrl) {
@@ -1155,6 +1238,9 @@ export const updateSuspend = async (req: Request, res: Response) => {
 
 export const installModpackFromMarketplace = async (req: Request, res: Response) => {
   const { provider, projectId, gameVersion, loader } = req.body || {};
+  const server = (req as any).server || {};
+  const effectiveGameVersion = typeof gameVersion === "string" && gameVersion.trim() ? gameVersion.trim() : String(server.version || "").trim();
+  const effectiveLoader = typeof loader === "string" && loader.trim() ? loader.trim() : String(server.type || "").trim().toLowerCase();
   if (provider !== "modrinth") return res.status(400).json({ error: "Only the official Modrinth modpack provider is supported for remote imports" });
   if (typeof projectId !== "string" || !/^[a-zA-Z0-9_-]{2,80}$/.test(projectId)) {
     return res.status(400).json({ error: "Invalid modpack project id" });
@@ -1165,20 +1251,11 @@ export const installModpackFromMarketplace = async (req: Request, res: Response)
   const tempPath = path.join(tempDir, `marketplace-${crypto.randomUUID()}.mrpack`);
   try {
     await fs.ensureDir(tempDir);
-    const versionResponse = await axios.get(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version`, {
-      params: {
-        loaders: typeof loader === "string" && loader.trim() ? JSON.stringify([loader.trim()]) : undefined,
-        game_versions: typeof gameVersion === "string" && gameVersion.trim() ? JSON.stringify([gameVersion.trim()]) : undefined,
-      },
-      timeout: 12_000,
-      headers: { "User-Agent": "ShiroNex-Panel/1.0 modpack-import" },
-    });
-    const versions = Array.isArray(versionResponse.data) ? versionResponse.data : [];
-    const version = versions.find((candidate: any) => Array.isArray(candidate.files) && candidate.files.length > 0);
-    const file = version?.files?.find((candidate: any) => candidate.primary) || version?.files?.[0];
-    const downloadUrl = typeof file?.url === "string" ? file.url : "";
-    if (!downloadUrl || !downloadUrl.startsWith("https://cdn.modrinth.com/")) {
-      return res.status(404).json({ error: "No safe Modrinth archive was found for this modpack" });
+    const resolved = await resolveModrinthVersion(projectId, effectiveGameVersion, effectiveLoader);
+    const file = resolved.file;
+    const downloadUrl = typeof file.url === "string" ? file.url : "";
+    if (!downloadUrl || !downloadUrl.startsWith("https://cdn.modrinth.com/") || !String(file.filename || "").toLowerCase().endsWith(".mrpack")) {
+      return res.status(404).json({ error: "No safe compatible Modrinth .mrpack archive was found" });
     }
 
     const response = await axios.get(downloadUrl, {
@@ -1249,8 +1326,15 @@ export const importModpack = async (req: Request, res: Response) => {
     }
 
     const entries = await extractZipSafely(uploaded.path, tempDir);
-    const overridesPath = path.join(tempDir, "overrides");
-    const sourcePath = await fs.pathExists(overridesPath) ? overridesPath : tempDir;
+    const isMrpack = originalName.endsWith(".mrpack");
+    let sourcePath = tempDir;
+    if (isMrpack) {
+      sourcePath = path.join(tempDir, "compiled");
+      await buildMrpackInstallTree(tempDir, sourcePath);
+    } else {
+      const overridesPath = path.join(tempDir, "overrides");
+      sourcePath = await fs.pathExists(overridesPath) ? overridesPath : tempDir;
+    }
     if (remote) {
       const files = await collectArchiveFiles(sourcePath);
       try {
@@ -1265,12 +1349,13 @@ export const importModpack = async (req: Request, res: Response) => {
       }
       await fs.remove(uploaded.path);
       await fs.remove(tempDir);
-      return res.json({ success: true, entries: files.length, backupFilename: null, message: "Archive validated and imported on the remote node. Review the files before starting." });
+      return res.json({ success: true, entries: files.length, backupFilename: null, message: isMrpack ? "Modrinth pack dependencies were verified and imported on the remote node. Review the files before starting." : "Archive validated and imported on the remote node. Review the files before starting." });
     }
     await copyDirectorySafely(sourcePath, serverDir);
+    const installedEntries = isMrpack ? (await collectArchiveFiles(sourcePath)).length : entries.length;
     await fs.remove(uploaded.path);
     await fs.remove(tempDir);
-    res.json({ success: true, entries: entries.length, backupFilename, message: "Archive validated and imported. Review the server files before starting." });
+    res.json({ success: true, entries: installedEntries, backupFilename, message: isMrpack ? "Modrinth pack dependencies were verified and imported. Review the files before starting." : "Archive validated and imported. Review the files before starting." });
   } catch (error: any) {
     await fs.remove(uploaded.path).catch(() => undefined);
     await fs.remove(tempDir).catch(() => undefined);

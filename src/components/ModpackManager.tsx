@@ -74,8 +74,9 @@ export default function ModpackManager({ serverId }: { serverId: string }) {
   };
 
   useEffect(() => {
-    void searchModpacks();
-  }, []);
+    const timer = window.setTimeout(() => void searchModpacks(), 350);
+    return () => window.clearTimeout(timer);
+  }, [query, gameVersion, loader]);
 
   const visibleItems = useMemo(() => [...items].sort((a, b) => b.downloads - a.downloads), [items]);
 

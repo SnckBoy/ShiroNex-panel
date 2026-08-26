@@ -64,10 +64,10 @@ function normalizeModrinth(hit: any, kind: MarketplaceKind): MarketplaceItem {
     iconUrl: cleanText(hit.icon_url) || null,
     downloads: Number(hit.downloads) || 0,
     rating: null,
-    latestVersion: null,
+    latestVersion: cleanText(hit.latest_version) || null,
     gameVersions: asStringArray(hit.versions),
     loaders: asStringArray(hit.categories),
-    platforms: [],
+    platforms: asStringArray(hit.environment),
     updatedAt: cleanText(hit.date_modified) || null,
     projectUrl: `https://modrinth.com/${kind === "modpack" ? "modpack" : kind}/${encodeURIComponent(cleanText(hit.slug) || cleanText(hit.project_id))}`,
     compatibility: asStringArray(hit.versions).length > 0 ? "known" : "unknown",
@@ -82,7 +82,14 @@ async function searchModrinth(query: MarketplaceQuery): Promise<MarketplaceItem[
   const response = await http.get("https://api.modrinth.com/v2/search", {
     params: { query: query.query || undefined, facets: JSON.stringify(facets), limit: clampLimit(query.limit) },
   });
-  return Array.isArray(response.data?.hits) ? response.data.hits.map((hit: any) => normalizeModrinth(hit, query.kind)) : [];
+  if (!Array.isArray(response.data?.hits)) return [];
+  return response.data.hits
+    .filter((hit: any) => {
+      const primary = cleanText(hit.project_type);
+      const allTypes = asStringArray(hit.all_project_types);
+      return primary === projectType || allTypes.includes(projectType);
+    })
+    .map((hit: any) => normalizeModrinth(hit, query.kind));
 }
 
 async function searchHangar(query: MarketplaceQuery): Promise<MarketplaceItem[]> {

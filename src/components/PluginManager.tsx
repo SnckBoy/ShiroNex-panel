@@ -13,11 +13,18 @@ import {
   Server,
   SlidersHorizontal,
   Star,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { LoadingOverlay } from "./LoadingOverlay";
 
 type Provider = "all" | "modrinth" | "hangar" | "spiget";
 type SortMode = "downloads" | "name" | "updated" | "rating";
+
+interface InstalledPlugin {
+  filename: string;
+  size: number;
+}
 
 interface MarketplacePlugin {
   id: string;
@@ -55,12 +62,16 @@ export default function PluginManager({ serverId }: { serverId: string }) {
   const [gameVersion, setGameVersion] = useState("");
   const [loader, setLoader] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [installed, setInstalled] = useState<InstalledPlugin[]>([]);
+  const [installedLoading, setInstalledLoading] = useState(false);
 
   const searchPlugins = async (event?: React.FormEvent) => {
     event?.preventDefault();
     try {
       setLoading(true);
       setError("");
+      setNotice("");
       const response = await axios.get<{ items: MarketplacePlugin[] }>("/api/marketplace/search", {
         params: { q: query.trim(), kind: "plugin", provider, gameVersion: gameVersion.trim(), loader: loader.trim(), limit: 40 },
       });
@@ -73,9 +84,36 @@ export default function PluginManager({ serverId }: { serverId: string }) {
     }
   };
 
+  const loadInstalled = async () => {
+    setInstalledLoading(true);
+    try {
+      const response = await axios.get<{ items: InstalledPlugin[] }>(`/api/servers/${serverId}/plugins/installed`);
+      setInstalled(response.data.items || []);
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.error || "Unable to read installed plugins.");
+    } finally {
+      setInstalledLoading(false);
+    }
+  };
+
+  const removeInstalled = async (plugin: InstalledPlugin) => {
+    if (!window.confirm(`Remove ${plugin.filename}? This deletes the plugin from the server.`)) return;
+    try {
+      await axios.delete(`/api/servers/${serverId}/plugins/${encodeURIComponent(plugin.filename)}`);
+      await loadInstalled();
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.error || "Unable to remove plugin.");
+    }
+  };
+
   useEffect(() => {
-    void searchPlugins();
-  }, [provider]);
+    const timer = window.setTimeout(() => void searchPlugins(), 350);
+    return () => window.clearTimeout(timer);
+  }, [query, provider, gameVersion, loader]);
+
+  useEffect(() => {
+    void loadInstalled();
+  }, [serverId]);
 
   const sortedPlugins = useMemo(() => {
     return [...plugins].sort((left, right) => {
@@ -97,9 +135,10 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         gameVersion: gameVersion.trim() || undefined,
         loader: loader.trim() || undefined,
       });
-      alert(response.data.message || `${plugin.name} installed successfully. Restart or reload the server to apply it.`);
+      setNotice(response.data.message || `${plugin.name} installed successfully. Restart or reload the server to apply it.`);
+      await loadInstalled();
     } catch (requestError: any) {
-      alert(requestError.response?.data?.error || "Plugin installation failed.");
+      setError(requestError.response?.data?.error || "Plugin installation failed.");
     } finally {
       setIsInstalling(null);
     }
@@ -135,6 +174,12 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         </section>
 
         {error && <div className="flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-200"><AlertCircle className="h-4 w-4 shrink-0" /> {error}</div>}
+        {notice && <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-sm text-emerald-200"><CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}</div>}
+
+        <section className="snx-console-surface rounded-2xl border border-border-subtle p-4 md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold text-foreground">Installed Plugins</h3><p className="mt-1 text-xs text-muted-foreground">Files currently detected in this server’s plugins directory.</p></div><button type="button" onClick={() => void loadInstalled()} disabled={installedLoading} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${installedLoading ? "animate-spin" : ""}`} /> Refresh</button></div>
+          {installed.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No plugin JAR files detected yet.</p> : <div className="mt-4 divide-y divide-border-subtle">{installed.map((plugin) => <div key={plugin.filename} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-foreground">{plugin.filename}</p><p className="text-xs text-muted-foreground">{(plugin.size / 1024 / 1024).toFixed(2)} MB · server filesystem</p></div><button type="button" onClick={() => void removeInstalled(plugin)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-rose-400/25 px-3 text-xs font-semibold text-rose-200 hover:bg-rose-400/10"><Trash2 className="h-3.5 w-3.5" /> Remove</button></div>)}</div>}
+        </section>
         {!loading && !error && sortedPlugins.length === 0 && <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground"><SlidersHorizontal className="mx-auto mb-3 h-7 w-7" /><p>No plugins found for this search.</p><p className="mt-1 text-xs">Try another provider, version, or search term.</p></div>}
 
         <div className="grid gap-4 xl:grid-cols-2">
