@@ -8,8 +8,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import fs from "fs-extra";
 import jwt from "jsonwebtoken";
-import * as archiverModule from "archiver";
-const createArchive: any = (archiverModule as any).default ?? archiverModule;
+import { TarArchive } from "archiver";
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
   console.error(
@@ -114,7 +113,7 @@ app.get("/shironex-node.tar.gz", (_req, res) => {
   const daemonDir = path.join(process.cwd(), "node-daemon");
   if (!fs.existsSync(path.join(daemonDir, "package.json"))) return res.status(404).send("Node daemon unavailable");
   res.type("application/gzip");
-  const archive = createArchive("tar", { gzip: true });
+  const archive = new TarArchive({ gzip: true });
   archive.on("error", (err: Error) => {
     console.error("Node bundle archive error:", err);
     if (!res.headersSent) res.status(500);
