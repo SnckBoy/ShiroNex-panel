@@ -149,6 +149,10 @@ export const createServer = async (req: Request, res: Response) => {
     res.status(400).json({ error: "Missing required fields (name, ram, port)" });
     return;
   }
+  const serverPort = Number(port);
+  if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
+    return res.status(400).json({ error: "Server port must be an integer from 1 to 65535." });
+  }
 
   const requestedNodeId = String(nodeId || "");
   if (!requestedNodeId) return res.status(400).json({ error: "Select a node before creating a server." });
@@ -169,9 +173,9 @@ export const createServer = async (req: Request, res: Response) => {
   const allocations = await readJSON("allocations.json") || [];
   let selectedAllocation:any = null;
   if (allocationId) {
-    selectedAllocation = allocations.find((a:any)=>a.id===String(allocationId) && a.nodeId===requestedNodeId && !a.assignedServerId);
+    selectedAllocation = allocations.find((a:any)=>a.id===String(allocationId) && String(a.nodeId)===requestedNodeId && !a.assignedServerId);
     if (!selectedAllocation) return res.status(409).json({ error: "Allocation is unavailable or belongs to another node." });
-    if (Number(port) < Number(selectedAllocation.portStart) || Number(port) > Number(selectedAllocation.portEnd)) return res.status(400).json({ error: "Server port is outside the selected allocation." });
+    if (serverPort < Number(selectedAllocation.portStart) || serverPort > Number(selectedAllocation.portEnd)) return res.status(400).json({ error: "Server port is outside the selected allocation." });
   } else {
     return res.status(400).json({ error: "An available allocation is required for every node." });
   }
@@ -183,7 +187,7 @@ export const createServer = async (req: Request, res: Response) => {
     ram,
     cpu: cpu || 100,
     disk: disk || 10,
-    port,
+    port: serverPort,
     ipAlias: ipAlias || "",
     nodeId: requestedNodeId,
     type: type || "PAPER",
@@ -197,7 +201,7 @@ export const createServer = async (req: Request, res: Response) => {
 
   const servers = await readJSON("servers.json") || [];
   
-  if (servers.find((s: any) => String(s.nodeId || "local") === requestedNodeId && Number(s.port) === Number(port))) {
+  if (servers.find((s: any) => String(s.nodeId || "local") === requestedNodeId && Number(s.port) === serverPort)) {
     res.status(400).json({ error: "Port is already in use on the selected node." });
     return;
   }
@@ -286,6 +290,16 @@ export const deleteServer = async (req: Request, res: Response) => {
     
     servers = servers.filter((s: any) => s.id !== id);
     await writeJSON("servers.json", servers);
+
+    const allocations = await readJSON("allocations.json") || [];
+    let allocationChanged = false;
+    for (const allocation of allocations) {
+      if (allocation.assignedServerId === id) {
+        allocation.assignedServerId = null;
+        allocationChanged = true;
+      }
+    }
+    if (allocationChanged) await writeJSON("allocations.json", allocations);
     
     // Remove files
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
