@@ -39,6 +39,16 @@ const canManageServer = (req: Request, server: any) => {
   return user?.role === "admin" || user?.role === "owner" || server?.owner === user?.id;
 };
 
+const nodeOperationError = (error: any, fallback: string) => {
+  const dockerUnavailable = error?.dockerUnavailable === true || error?.responseData?.dockerUnavailable === true;
+  const message = String(error?.message || error?.responseData?.error || fallback);
+  const statusCode = Number(error?.statusCode || (dockerUnavailable ? 503 : 500));
+  return {
+    statusCode: statusCode >= 400 && statusCode < 600 ? statusCode : (dockerUnavailable ? 503 : 500),
+    body: dockerUnavailable ? { error: message, dockerUnavailable: true } : { error: message },
+  };
+};
+
 export const getServers = async (req: Request, res: Response) => {
   const user = (req as any).user;
   const servers = await readJSON("servers.json") || [];
@@ -91,47 +101,52 @@ export const getServer = async (req: Request, res: Response) => {
 };
 
 export const getServerStats = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const user = (req as any).user;
-  const servers = await readJSON("servers.json") || [];
-  const server = servers.find((s: any) => s.id === id);
-  if (!server) {
-    res.status(404).json({ error: "Server not found" });
-    return;
-  }
-  if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+  try {
+    const { id } = req.params;
+    const user = (req as any).user;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) {
+      res.status(404).json({ error: "Server not found" });
+      return;
+    }
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
-  const limitRamBytes = server.ram ? Number(server.ram) * 1024 * 1024 * 1024 : null;
-  const limitDiskBytes = server.disk ? Number(server.disk) * 1024 * 1024 * 1024 : null;
-  if (server.containerId) {
-    const stats = await getContainerStats(server.containerId, server.nodeId);
-    res.json({
-      ...stats,
-      timestamp: stats?.timestamp ?? Date.now(),
-      limitRamBytes,
-      limitDiskBytes,
-      limitCpu: server.cpu ? Number(server.cpu) : null,
-      // Legacy fields remain for older clients; new clients use the byte fields above.
-      limitRam: server.ram ? Number(server.ram) * 1024 : null,
-      limitDisk: server.disk ? Number(server.disk) : null,
-    });
-  } else {
-    res.json({
-      available: false,
-      timestamp: Date.now(),
-      cpu: null,
-      ram: null,
-      disk: null,
-      networkRxBytes: null,
-      networkTxBytes: null,
-      limitRamBytes,
-      limitDiskBytes,
-      limitCpu: server.cpu ? Number(server.cpu) : null,
-      limitRam: server.ram ? Number(server.ram) * 1024 : null,
-      limitDisk: server.disk ? Number(server.disk) : null,
-    });
+    const limitRamBytes = server.ram ? Number(server.ram) * 1024 * 1024 * 1024 : null;
+    const limitDiskBytes = server.disk ? Number(server.disk) * 1024 * 1024 * 1024 : null;
+    if (server.containerId) {
+      const stats = await getContainerStats(server.containerId, server.nodeId);
+      res.json({
+        ...stats,
+        timestamp: stats?.timestamp ?? Date.now(),
+        limitRamBytes,
+        limitDiskBytes,
+        limitCpu: server.cpu ? Number(server.cpu) : null,
+        // Legacy fields remain for older clients; new clients use the byte fields above.
+        limitRam: server.ram ? Number(server.ram) * 1024 : null,
+        limitDisk: server.disk ? Number(server.disk) : null,
+      });
+    } else {
+      res.json({
+        available: false,
+        timestamp: Date.now(),
+        cpu: null,
+        ram: null,
+        disk: null,
+        networkRxBytes: null,
+        networkTxBytes: null,
+        limitRamBytes,
+        limitDiskBytes,
+        limitCpu: server.cpu ? Number(server.cpu) : null,
+        limitRam: server.ram ? Number(server.ram) * 1024 : null,
+        limitDisk: server.disk ? Number(server.disk) : null,
+      });
+    }
+  } catch (err: any) {
+    const failure = nodeOperationError(err, "Unable to read server telemetry");
+    res.status(failure.statusCode).json({ ...failure.body, available: false, timestamp: Date.now() });
   }
 };
 
@@ -353,7 +368,8 @@ export const startServer = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error("Start server error:", err);
-    res.status(500).json({ error: err.message || "Failed to start server" });
+    const failure = nodeOperationError(err, "Failed to start server");
+    res.status(failure.statusCode).json(failure.body);
   }
 };
 
@@ -379,7 +395,8 @@ export const stopServer = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error("Stop server error:", err);
-    res.status(500).json({ error: err.message || "Failed to stop server" });
+    const failure = nodeOperationError(err, "Failed to stop server");
+    res.status(failure.statusCode).json(failure.body);
   }
 };
 
@@ -413,7 +430,8 @@ export const restartServer = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error("Restart server error:", err);
-    res.status(500).json({ error: err.message || "Failed to restart server" });
+    const failure = nodeOperationError(err, "Failed to restart server");
+    res.status(failure.statusCode).json(failure.body);
   }
 };
 

@@ -12,8 +12,19 @@ const clientFor = (node: NodeRecord): AxiosInstance => axios.create({
 
 export const nodeRequest = async <T=any>(node: NodeRecord, method: string, path: string, data?: any) => {
   const c = clientFor(node);
-  const response = await c.request<T>({ method, url: path, data });
-  return response.data;
+  try {
+    const response = await c.request<T>({ method, url: path, data });
+    return response.data;
+  } catch (error: any) {
+    const payload = error?.response?.data;
+    const normalized: any = new Error(payload?.error || error?.message || "Node request failed");
+    normalized.statusCode = Number(error?.response?.status || error?.statusCode || 502);
+    normalized.code = error?.code;
+    normalized.dockerUnavailable = payload?.dockerUnavailable === true;
+    normalized.nodeUnavailable = !error?.response;
+    normalized.responseData = payload;
+    throw normalized;
+  }
 };
 
 export const nodeControl = {

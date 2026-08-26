@@ -338,7 +338,16 @@ export const deleteContainer = async (containerId: string, nodeId?: string) => {
 
 export const getContainerStatus = async (containerId: string, nodeId?: string) => {
   const remote = await remoteNode(nodeId);
-  if (remote) return await nodeControl.status(remote, containerId);
+  if (remote) {
+    try {
+      return await nodeControl.status(remote, containerId);
+    } catch (error: any) {
+      // A missing Docker runtime should leave the server visible as offline so
+      // operators can open its page and read the actionable start error.
+      if (error?.dockerUnavailable === true) return null;
+      throw error;
+    }
+  }
   const docker = await getDocker(nodeId);
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
@@ -356,7 +365,16 @@ export const getContainerStatus = async (containerId: string, nodeId?: string) =
 
 export const getContainerStats = async (containerId: string, nodeId?: string) => {
   const remote = await remoteNode(nodeId);
-  if (remote) return await nodeControl.statsServer(remote, containerId);
+  if (remote) {
+    try {
+      return await nodeControl.statsServer(remote, containerId);
+    } catch (error: any) {
+      if (error?.dockerUnavailable === true) {
+        return { available: false, dockerUnavailable: true, timestamp: Date.now(), cpu: null, ram: null, disk: null, networkRxBytes: null, networkTxBytes: null };
+      }
+      throw error;
+    }
+  }
   const docker = await getDocker(nodeId);
   if (isSandbox) {
     return {

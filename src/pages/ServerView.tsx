@@ -33,7 +33,7 @@ export default function ServerView() {
   const [showRamWarning, setShowRamWarning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [actionNotice, setActionNotice] = useState<{ tone: "info" | "success" | "error"; text: string } | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ tone: "info" | "success" | "error"; text: string; dockerUnavailable?: boolean } | null>(null);
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
@@ -71,7 +71,12 @@ export default function ServerView() {
        await fetchServer();
        setActionNotice({ tone: "success", text: `${label} command accepted. Console output will show the world loading progress.` });
     } catch(e: any) {
-       setActionNotice({ tone: "error", text: e.response?.data?.error || `${label} command failed.` });
+       const details = e.response?.data || {};
+       setActionNotice({
+         tone: "error",
+         text: details.error || `${label} command failed.`,
+         dockerUnavailable: details.dockerUnavailable === true,
+       });
     } finally {
        setIsProcessing(false);
     }
@@ -331,7 +336,18 @@ export default function ServerView() {
 
 <div className="snx-server-content flex-1 relative flex flex-col min-h-0 bg-transparent">
         <div className="flex-1 flex flex-col relative overflow-hidden bg-transparent min-h-0 snx-server-route-surface">
-           {actionNotice && <div role="status" className={`mx-3 mt-3 rounded-xl border px-4 py-3 text-xs ${actionNotice.tone === "error" ? "border-rose-400/25 bg-rose-400/10 text-rose-200" : actionNotice.tone === "success" ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200" : "border-cyan-400/25 bg-cyan-400/10 text-cyan-100"}`}>{actionNotice.text}</div>}
+           {actionNotice && <div role="status" aria-live="polite" className={`mx-3 mt-3 rounded-xl border px-4 py-3 text-xs ${actionNotice.tone === "error" ? "border-rose-400/25 bg-rose-400/10 text-rose-200" : actionNotice.tone === "success" ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200" : "border-cyan-400/25 bg-cyan-400/10 text-cyan-100"}`}>
+             {actionNotice.dockerUnavailable ? (
+               <div className="flex items-start gap-3">
+                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
+                 <div className="space-y-1">
+                   <p className="font-semibold text-amber-200">Docker runtime unavailable</p>
+                   <p>{actionNotice.text}</p>
+                   <p className="text-amber-100/75">Install and start Docker on this node, then retry the server action.</p>
+                 </div>
+               </div>
+             ) : actionNotice.text}
+           </div>}
            <Routes>
              <Route path="/" element={<ServerConsole serverId={id!} server={server} actionNotice={actionNotice} />} />
              <Route path="/overview" element={<ServerOverview serverId={id!} server={server} />} />

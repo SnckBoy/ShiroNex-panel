@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Server, Cpu, HardDrive, Activity, Terminal, Play,
-  Square, RotateCw, Search, LayoutGrid, List, Shield, Globe, Clock, Zap
+  Square, RotateCw, Search, LayoutGrid, List, Shield, Globe, Clock, Zap, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -57,6 +57,7 @@ export default function Dashboard() {
   const [view, setView] = useState('grid');
   const navigate = useNavigate();
   const [actionInProgress, setActionInProgress] = useState<Record<string, boolean>>({});
+  const [actionNotice, setActionNotice] = useState<{ tone: "info" | "success" | "error"; text: string; dockerUnavailable?: boolean } | null>(null);
 
   useEffect(() => {
     if (realServers && Array.isArray(realServers)) {
@@ -94,12 +95,20 @@ export default function Dashboard() {
 
   const handleAction = async (id: string, action: string) => {
     setActionInProgress((previous) => ({ ...previous, [id]: true }));
+    const label = action === "start" ? "Start" : action === "stop" ? "Stop" : action === "restart" ? "Restart" : "Kill";
+    setActionNotice({ tone: "info", text: `${label} requested. Waiting for the server state to update…` });
     try {
       await axios.post(`/api/servers/${id}/${action}`);
       refetch();
-    } catch (error) {
+      setActionNotice({ tone: "success", text: `${label} command accepted.` });
+    } catch (error: any) {
       console.error('Action failed', error);
-      alert('Failed to execute action');
+      const details = error.response?.data || {};
+      setActionNotice({
+        tone: "error",
+        text: details.error || `${label} command failed.`,
+        dockerUnavailable: details.dockerUnavailable === true,
+      });
     } finally {
       setActionInProgress((previous) => ({ ...previous, [id]: false }));
     }
@@ -142,6 +151,19 @@ export default function Dashboard() {
             </div>
           </div>
         </header>
+
+        {actionNotice && <div role="status" aria-live="polite" className={`mb-5 rounded-2xl border px-4 py-3 text-sm ${actionNotice.tone === "error" ? "border-rose-400/25 bg-rose-400/10 text-rose-100" : actionNotice.tone === "success" ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100" : "border-cyan-400/25 bg-cyan-400/10 text-cyan-100"}`}>
+          {actionNotice.dockerUnavailable ? (
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden="true" />
+              <div className="space-y-1">
+                <p className="font-semibold text-amber-200">Docker runtime unavailable</p>
+                <p>{actionNotice.text}</p>
+                <p className="text-amber-100/75">Install and start Docker on the affected node, then retry the server action.</p>
+              </div>
+            </div>
+          ) : actionNotice.text}
+        </div>}
 
         <section className="snx-dashboard-core-hero" aria-label="Infrastructure Core">
           <InfrastructureCore
