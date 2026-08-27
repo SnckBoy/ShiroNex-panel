@@ -593,3 +593,26 @@ html.reduce-motion .snx-server-card:hover, html.reduce-motion .snx-server-row:ho
 }
 
 a[data-disabled="true"], button:disabled { cursor: not-allowed; }
+
+
+@media (max-width: 900px), (pointer: coarse) {
+  .snx-app-sidebar,
+  .snx-global-topbar,
+  .snx-server-sidebar,
+  .snx-server-topbar,
+  .snx-metric-card,
+  .snx-server-card,
+  .snx-server-row,
+  .snx-console-window,
+  .snx-console-surface {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .snx-metric-card,
+  .snx-server-card,
+  .snx-server-row,
+  .snx-console-window {
+    box-shadow: 0 12px 28px rgba(0,0,0,.14), inset 0 1px rgba(255,255,255,.035) !important;
+  }
+}
