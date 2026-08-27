@@ -188,6 +188,8 @@ export default function ServerView() {
             <h1 className="text-lg font-bold tracking-tight text-foreground truncate pr-2">{server.name}</h1>
           </div>
           <button 
+            type="button"
+            aria-label="Close server navigation"
             onClick={() => setSidebarOpen(false)}
             className="snx-icon-button md:hidden"
           >
@@ -205,7 +207,7 @@ export default function ServerView() {
                 </span>
                 <span className="text-xs font-medium text-foreground-muted capitalize">{server.status}</span>
                 <span className="text-xs text-muted-foreground">•</span>
-                <button onClick={handleCopyIp} className="flex items-center space-x-1.5 px-1.5 py-0.5 rounded-md hover:bg-muted-hover transition-colors group cursor-pointer truncate" title="Copy Connection Info">
+                  <button type="button" onClick={handleCopyIp} aria-label="Copy server connection address" className="flex items-center space-x-1.5 px-1.5 py-0.5 rounded-md hover:bg-muted-hover transition-colors group cursor-pointer truncate" title="Copy Connection Info">
                   <span className="snx-mono-label text-[11px] font-mono truncate">
                     {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
                   </span>
@@ -280,6 +282,9 @@ export default function ServerView() {
           <div className="flex items-center justify-between w-full md:w-auto">
             <div className="flex items-center gap-3">
               <button 
+                type="button"
+                aria-label={sidebarOpen ? "Close server navigation" : "Open server navigation"}
+                aria-expanded={sidebarOpen}
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="snx-icon-button snx-menu-button md:hidden flex items-center justify-center relative overflow-hidden group"
               >
@@ -299,7 +304,7 @@ export default function ServerView() {
           </div>
           
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 sm:pb-0 justify-between w-full md:w-auto">
-             <button onClick={handleCopyIp} className="snx-connection-chip flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer shrink-0" title="Copy Connection Info">
+             <button type="button" onClick={handleCopyIp} aria-label="Copy server connection address" className="snx-connection-chip flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer shrink-0" title="Copy Connection Info">
                 <span className="text-xs font-mono text-muted-foreground group-hover:text-foreground-muted transition-colors truncate max-w-[150px] lg:max-w-[200px]">
                   {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
                 </span>

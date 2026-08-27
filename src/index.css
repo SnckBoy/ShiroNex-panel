@@ -237,11 +237,30 @@ body {
   animation: qx-fade-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Enhancements for light/dark theme transition */
-*, *::before, *::after {
-  transition-property: background-color, border-color, color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 300ms;
+/* Theme transitions stay scoped to surfaces and controls to avoid animating the whole DOM. */
+body,
+.snx-app-shell,
+.snx-server-layout,
+.snx-app-sidebar,
+.snx-global-topbar,
+.snx-metric-card,
+.snx-server-card,
+.snx-server-row,
+.snx-console-window,
+.snx-console-surface,
+button,
+a,
+input,
+select,
+textarea {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow, opacity;
+  transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  transition-duration: 180ms;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-color, #a855f7);
+  outline-offset: 3px;
 }
 
 /* Card hover lift */

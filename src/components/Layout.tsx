@@ -36,6 +36,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`snx-app-shell flex h-[100dvh] w-full bg-transparent text-foreground font-sans overflow-hidden selection:bg-indigo-500/30`}>
+      <a className="snx-skip-link" href="#main-content">Skip to main content</a>
       {/* Mobile Sidebar Overlay */}
       {mobileOpen && (
         <div 
@@ -54,11 +55,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Top Header */}
         <header className="snx-global-topbar h-16 flex items-center justify-between px-4 sm:px-6 relative z-10 flex-shrink-0">
           <div className="flex items-center gap-4">
-            <button onClick={() => setMobileOpen(true)} className="snx-topbar-icon md:hidden p-2 -ml-2 rounded-lg">
-              <Menu size={20} />
+            <button type="button" aria-label="Open navigation menu" onClick={() => setMobileOpen(true)} className="snx-topbar-icon md:hidden p-2 -ml-2 rounded-lg">
+              <Menu size={20} aria-hidden="true" />
             </button>
-            <button onClick={() => setIsCollapsed(!isCollapsed)} className="snx-topbar-icon hidden md:flex p-2 -ml-2 rounded-lg">
-              <Menu size={20} />
+            <button type="button" aria-label={isCollapsed ? "Expand navigation menu" : "Collapse navigation menu"} onClick={() => setIsCollapsed(!isCollapsed)} className="snx-topbar-icon hidden md:flex p-2 -ml-2 rounded-lg">
+              <Menu size={20} aria-hidden="true" />
             </button>
             <div className="hidden sm:flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <span className="text-foreground">{getBreadcrumb()}</span>
@@ -72,7 +73,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </header>
         
         {/* Main Content */}
-        <main className={`snx-app-main flex-1 w-full h-full relative z-0 overflow-x-hidden overflow-y-auto pb-safe custom-scrollbar`}>
+        <main id="main-content" tabIndex={-1} className={`snx-app-main flex-1 w-full h-full relative z-0 overflow-x-hidden overflow-y-auto pb-safe custom-scrollbar`}>
           <div className="snx-page-container p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
             {children}
           </div>

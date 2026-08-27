@@ -62,11 +62,11 @@ const FILTERS: { key: LogFilter; label: string }[] = [
 ═══════════════════════════════════════════════════════ */
 
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
 ::selection { background: rgba(52,211,153,0.25); }
 
-.qx-display { font-family: 'Chakra Petch', system-ui, sans-serif; }
+.qx-display { font-family: 'Inter', system-ui, sans-serif; }
 .qx-mono    { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
 
 @keyframes qx-fade-up    { from { opacity:0; transform:translateY(14px) scale(.985); } to { opacity:1; transform:none; } }
