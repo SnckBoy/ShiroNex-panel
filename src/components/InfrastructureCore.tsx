@@ -101,7 +101,10 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
     let scene: Scene | undefined;
     let camera: PerspectiveCamera | undefined;
     let root: Group | undefined;
+    let sharedGeometry: BoxGeometry | undefined;
     let blocks: BlockRecord[] = [];
+    let isVisible = true;
+    let lastRenderTime = 0;
     let dragStartX = 0;
     let dragStartY = 0;
     let rotationStartX = 0;
@@ -114,7 +117,8 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
       const bounds = host.getBoundingClientRect();
       const width = Math.max(1, bounds.width);
       const height = Math.max(1, bounds.height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, size === "hero" ? 1.5 : 1.25));
+      // A capped pixel ratio avoids rendering a large offscreen buffer on retina displays.
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, size === "hero" ? 1.25 : 1));
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -144,15 +148,29 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
     };
 
     const onVisibilityChange = () => {
-      if (document.hidden) cancelAnimationFrame(animationFrame);
-      else if (!disposed) animationFrame = requestAnimationFrame(render);
+      if (document.hidden) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+      } else if (!disposed && isVisible && !animationFrame) {
+        animationFrame = requestAnimationFrame(render);
+      }
     };
 
     const render = (time: number) => {
-      if (disposed || !renderer || !scene || !camera || !root) return;
-      if (!document.hidden) {
-        if (!dragging) root.rotation.y += size === "hero" ? 0.0017 : 0.0022;
-        const bootProgress = Math.min(1, (time - bootStart) / 1250);
+      animationFrame = 0;
+      if (disposed || !renderer || !scene || !camera || !root || document.hidden || !isVisible) return;
+
+      // The reference animation is calm rather than a 60fps game loop. Keep interaction
+      // responsive while capping idle GPU renders to roughly 30fps.
+      const frameInterval = dragging ? 1000 / 60 : 1000 / 30;
+      if (lastRenderTime && time - lastRenderTime < frameInterval) {
+        animationFrame = requestAnimationFrame(render);
+        return;
+      }
+      const delta = Math.min(50, lastRenderTime ? time - lastRenderTime : 16.67);
+      lastRenderTime = time;
+      if (!dragging) root.rotation.y += (size === "hero" ? 0.102 : 0.132) * (delta / 1000);
+      const bootProgress = Math.min(1, (time - bootStart) / 1250);
         blocks.forEach((block, index) => {
           const blockProgress = Math.max(0, Math.min(1, (bootProgress - index * 0.035) / 0.45));
           block.mesh.scale.setScalar(Math.max(0.001, blockProgress));
@@ -160,19 +178,19 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
           const pulse = 0.78 + Math.sin(time * 0.002 + block.phase) * 0.12 + block.load / 100 * 0.14;
           block.mesh.material.emissiveIntensity = pulse;
         });
-        renderer.render(scene, camera);
-        animationFrame = requestAnimationFrame(render);
-      }
+      renderer.render(scene, camera);
+      animationFrame = requestAnimationFrame(render);
     };
 
     const initialize = async () => {
       try {
         const THREE = await import("three");
         if (disposed) return;
-        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "low-power" });
+        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: "low-power", precision: "mediump", depth: true, stencil: false });
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.1;
+        renderer.toneMappingExposure = 1.05;
+        renderer.sortObjects = false;
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(size === "hero" ? 28 : 32, 1, 0.1, 100);
         camera.position.set(0, 0.2, size === "hero" ? 9.5 : 7.5);
@@ -186,7 +204,7 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
         rimLight.position.set(-3, 1, 3);
         scene.add(rimLight);
 
-        const geometry = new THREE.BoxGeometry(0.82, 0.82, 0.82);
+        sharedGeometry = new THREE.BoxGeometry(0.82, 0.82, 0.82);
         const columns = size === "hero" ? 5 : 3;
         const spacing = 1.05;
         blockServers.forEach((server, index) => {
@@ -201,7 +219,7 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
             emissiveIntensity: 0.85,
             transparent: true,
           });
-          const mesh = new THREE.Mesh(geometry, material);
+          const mesh = new THREE.Mesh(sharedGeometry, material);
           const layer = Math.floor(index / (columns * columns));
           const layerIndex = index % (columns * columns);
           const row = Math.floor(layerIndex / columns);
@@ -227,6 +245,13 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
 
     const observer = new ResizeObserver(resize);
     observer.observe(host);
+    const visibilityObserver = typeof IntersectionObserver !== "undefined"
+      ? new IntersectionObserver(([entry]) => {
+        isVisible = Boolean(entry?.isIntersecting);
+        if (isVisible && !document.hidden && !animationFrame) animationFrame = requestAnimationFrame(render);
+      }, { threshold: 0.05 })
+      : undefined;
+    visibilityObserver?.observe(host);
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
@@ -238,16 +263,18 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
       disposed = true;
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
+      visibilityObserver?.disconnect();
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       blocks.forEach(({ mesh }) => {
-        mesh.geometry.dispose();
         mesh.material.map?.dispose();
         mesh.material.dispose();
       });
+      sharedGeometry?.dispose();
+      sharedGeometry = undefined;
       renderer?.dispose();
       renderer = undefined;
     };

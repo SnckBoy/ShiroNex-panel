@@ -370,3 +370,33 @@
 @media (prefers-reduced-motion: reduce) {
   .snx-core-echo { animation: none; }
 }
+
+
+/* Smooth core profile: preserve the central-node visual while limiting paint and blur work. */
+.snx-core {
+  contain: layout paint;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.snx-core__halo {
+  filter: blur(42px);
+  opacity: .38;
+}
+.snx-core__fallback-block {
+  animation-duration: 3.8s;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .snx-core { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .snx-core__halo { filter: blur(30px); opacity: .28; }
+  .snx-core__stage { min-height: 18rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snx-core__fallback-block,
+  .snx-core-echo { animation: none !important; }
+  .snx-core__halo { filter: blur(24px); }
+}
+html.reduce-motion .snx-core__fallback-block,
+html.reduce-motion .snx-core-echo { animation: none !important; }
+html.reduce-motion .snx-core__halo { filter: blur(24px); }

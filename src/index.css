@@ -579,3 +579,40 @@ html.reduce-motion .wallpaper-orb { transform: none !important; }
 .dashboard-server-card .text-slate-400 { color: var(--text-muted-foreground) !important; }
 @keyframes dashboard-orbit { to { transform: translate3d(42px, 26px, 0) scale(1.1); } }
 @media (prefers-reduced-motion: reduce) { .dashboard-ambient::before, .dashboard-ambient::after, .dashboard-stat-card, .dashboard-server-card { animation: none !important; transform: none !important; } }
+
+
+/* Runtime performance profile: atmospheric, but deliberately low-work. */
+.global-live-wallpaper,
+.core-space,
+.dashboard-ambient { contain: paint; }
+.wallpaper-orb {
+  filter: blur(78px);
+  animation-duration: 36s;
+  will-change: auto;
+}
+.wallpaper-orb-three { opacity: .06; }
+.wallpaper-stars { animation: none; }
+.effect-animated-gradient { animation-duration: 44s; }
+.dashboard-ambient::before,
+.dashboard-ambient::after {
+  filter: blur(76px);
+  animation-duration: 38s;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .wallpaper-orb { filter: blur(64px); animation-duration: 48s; }
+  .wallpaper-noise { display: none; }
+  .dashboard-ambient::before,
+  .dashboard-ambient::after { filter: blur(58px); opacity: .07; animation-duration: 48s; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wallpaper-orb,
+  .dashboard-ambient::before,
+  .dashboard-ambient::after,
+  .effect-animated-gradient { animation: none !important; }
+}
+html.reduce-motion .wallpaper-orb,
+html.reduce-motion .dashboard-ambient::before,
+html.reduce-motion .dashboard-ambient::after,
+html.reduce-motion .effect-animated-gradient { animation: none !important; }
