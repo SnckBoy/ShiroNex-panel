@@ -7,8 +7,9 @@ const emitServerLog = (serverId: string, message: string) => {
   socketIo?.to(`server_${serverId}`).emit("log", message);
 };
 import { readJSON } from "./db.js";
-import { decryptSecret, randomSecret } from "./security.js";
+import { randomSecret } from "./security.js";
 import { nodeControl } from "./nodeClient.js";
+import { nodeConnection } from "./nodeEndpoint.js";
 
 const configuredSocketPath = process.env.DOCKER_SOCKET_PATH;
 const configuredSocketExists = Boolean(configuredSocketPath && fs.existsSync(configuredSocketPath));
@@ -96,9 +97,7 @@ const remoteNode = async (nodeId?:string) => {
   const nodes=await readJSON("nodes.json")||[]; const n=nodes.find((x:any)=>x.id===nodeId);
   if(!n) throw new Error("Node not found");
   if(n.disabled) throw new Error("Node is disabled");
-  const secret=decryptSecret(n.credential);
-  const base=`${n.tls===false?"http":"https"}://${n.fqdn||n.hostname}:${n.apiPort}`;
-  return {id:n.id,baseUrl:base,credential:secret};
+  return nodeConnection(n);
 };
 
 export const createServerContainer = async (serverData: any, nodeId?: string) => {

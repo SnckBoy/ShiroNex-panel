@@ -171,7 +171,10 @@ export default function CreateServer() {
     } catch (e: any) {
       clearInterval(interval);
       setCreateProgress(0);
-      setError(e.response?.data?.error || "Failed to create server instance");
+      const data = e.response?.data;
+      const message = data?.error || e.message || "Failed to create server instance";
+      const hint = data?.hint ? ` ${data.hint}` : "";
+      setError(`${message}${hint}`);
       setLoading(false);
     }
   };

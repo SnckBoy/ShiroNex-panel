@@ -8,8 +8,8 @@ import fs from "fs-extra";
 import path from "path";
 import { ZipArchive } from "archiver";
 import extract from "extract-zip";
-import {decryptSecret} from "../services/security.js";
 import {nodeControl} from "../services/nodeClient.js";
+import {nodeConnection} from "../services/nodeEndpoint.js";
 import {audit} from "../services/security.js";
 import { copyDirectorySafely, extractZipSafely } from "../services/archiveSafety.js";
 
@@ -19,8 +19,7 @@ const remoteForServer=async(server:any)=>{
  const nodes=await readJSON("nodes.json")||[]; const n=nodes.find((x:any)=>x.id===server.nodeId);
  if(!n) throw new Error("Node not found");
  if(n.disabled) throw new Error("Node is disabled");
- if(!n.credential && !n.credentialHash) throw new Error("Node has not been registered yet");
- return {id:n.id,baseUrl:`${n.tls===false?"http":"https"}://${n.fqdn||n.hostname}:${n.apiPort}`,credential:decryptSecret(n.credential)};
+ return nodeConnection(n);
 };
 
 const nodeStatusForServer=(node:any)=>{
@@ -41,12 +40,22 @@ const canManageServer = (req: Request, server: any) => {
 
 const nodeOperationError = (error: any, fallback: string) => {
   const dockerUnavailable = error?.dockerUnavailable === true || error?.responseData?.dockerUnavailable === true;
+  const nodeUnavailable = error?.nodeUnavailable === true;
+  const timeout = error?.timeout === true;
+  const authFailed = error?.authFailed === true || Number(error?.statusCode) === 401;
   const message = String(error?.message || error?.responseData?.error || fallback);
-  const statusCode = Number(error?.statusCode || (dockerUnavailable ? 503 : 500));
-  return {
-    statusCode: statusCode >= 400 && statusCode < 600 ? statusCode : (dockerUnavailable ? 503 : 500),
-    body: dockerUnavailable ? { error: message, dockerUnavailable: true } : { error: message },
-  };
+  const statusCode = Number(error?.statusCode || (dockerUnavailable || nodeUnavailable ? 503 : 500));
+  const safeStatus = authFailed ? 502 : (statusCode >= 400 && statusCode < 600 ? statusCode : (dockerUnavailable || nodeUnavailable ? 503 : 500));
+  const body: any = dockerUnavailable ? { error: message, dockerUnavailable: true } : { error: message };
+  if (authFailed) {
+    body.nodeAuthenticationFailed = true;
+    body.hint = "The daemon rejected the node credential. Reconnect or rotate the node credential, then reinstall the node configuration if necessary.";
+  } else if (nodeUnavailable || timeout) {
+    body.nodeUnavailable = nodeUnavailable;
+    body.timeout = timeout;
+    body.hint = "Verify the node FQDN, DNS, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.";
+  }
+  return { statusCode: safeStatus, body };
 };
 
 export const getServers = async (req: Request, res: Response) => {
@@ -61,8 +70,15 @@ export const getServers = async (req: Request, res: Response) => {
   const updatedServers = await Promise.all(userServers.map(async (server: any) => {
     const next = { ...server };
     if (server.containerId) {
-      const status = await getContainerStatus(server.containerId, server.nodeId);
-      next.status = status?.State?.Running ? "online" : "offline";
+      try {
+        const status = await getContainerStatus(server.containerId, server.nodeId);
+        next.status = status?.State?.Running ? "online" : "offline";
+      } catch (error: any) {
+        // A single unreachable node must not blank the whole fleet view.
+        next.status = "offline";
+        next.nodeUnavailable = error?.nodeUnavailable === true;
+        next.nodeError = error?.message || "Node status is temporarily unavailable.";
+      }
     }
     const ownerRecord = users.find((candidate: any) => candidate.id === server.owner);
     const nodeRecord = nodes.find((candidate: any) => candidate.id === (server.nodeId || "local"));
@@ -95,8 +111,14 @@ export const getServer = async (req: Request, res: Response) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const status = await getContainerStatus(server.containerId, server.nodeId);
-  server.status = status?.State?.Running ? "online" : "offline";
+  try {
+    const status = await getContainerStatus(server.containerId, server.nodeId);
+    server.status = status?.State?.Running ? "online" : "offline";
+  } catch (error: any) {
+    server.status = "offline";
+    server.nodeUnavailable = error?.nodeUnavailable === true;
+    server.nodeError = error?.message || "Node status is temporarily unavailable.";
+  }
   res.json(server);
 };
 
@@ -180,6 +202,20 @@ export const createServer = async (req: Request, res: Response) => {
   const heartbeatTimeout = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
   if (!Number.isFinite(heartbeat) || Date.now() - heartbeat > heartbeatTimeout) return res.status(409).json({ error: "Selected node is offline. Install the daemon and wait for an authenticated heartbeat before deploying." });
 
+  // ONLINE means the daemon can reach the panel. Preflight the reverse direction
+  // as well, because Cloudflare Tunnel/FQDN ingress can fail independently.
+  try {
+    await nodeControl.health(nodeConnection(selectedNode));
+  } catch (err: any) {
+    const failure = nodeOperationError(err, "The selected node could not be reached.");
+    return res.status(failure.statusCode).json({
+      ...failure.body,
+      nodeUnavailable: err?.nodeUnavailable === true,
+      timeout: err?.timeout === true,
+      hint: "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
+    });
+  }
+
   const users = await readJSON("users.json") || [];
   const isStaff = user.role === "admin" || user.role === "owner";
   const requestedOwner = isStaff && owner ? String(owner) : String(user.id);
@@ -237,7 +273,13 @@ export const createServer = async (req: Request, res: Response) => {
     console.error(err);
     if (selectedAllocation) { selectedAllocation.assignedServerId = null; await writeJSON("allocations.json", allocations); }
     const current = await readJSON("servers.json") || []; await writeJSON("servers.json", current.filter((x:any)=>x.id!==id));
-    res.status(500).json({ error: err.message });
+    const failure = nodeOperationError(err, "Failed to create the server on the selected node.");
+    res.status(failure.statusCode).json({
+      ...failure.body,
+      nodeUnavailable: err?.nodeUnavailable === true,
+      timeout: err?.timeout === true,
+      hint: "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
+    });
   }
 };
 

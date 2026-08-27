@@ -21,6 +21,19 @@ const ageLabel = (node: any) => {
   return seconds < 2 ? "Just now" : `${seconds}s ago`;
 };
 
+const requestErrorMessage = (requestError: any, fallback: string) => {
+  const data = requestError?.response?.data;
+  const message = String(data?.error || requestError?.message || fallback);
+  const hint = data?.hint ? ` ${String(data.hint)}` : "";
+  return `${message}${hint}`;
+};
+
+const endpointLabel = (node: any) => {
+  const host = node.fqdn || node.hostname || node.publicIp || "address pending";
+  const port = node.behindProxy ? 443 : node.apiPort;
+  return `${host}:${port}`;
+};
+
 export default function Nodes() {
   const { user } = useAuth();
   const [nodes, setNodes] = useState<any[]>([]);
@@ -29,14 +42,14 @@ export default function Nodes() {
   const [error, setError] = useState("");
   const [health, setHealth] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "6768", sftpPort: "2022", location: "", visibility: "public" as "public" | "private", tls: false, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false });
+  const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "6768", sftpPort: "2022", location: "", visibility: "public" as "public" | "private", tls: false, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false, cloudflareAccessClientId: "", cloudflareAccessClientSecret: "" });
 
   const load = async () => {
     try {
       setNodes((await axios.get("/api/nodes")).data);
       setError("");
     } catch (requestError: any) {
-      setError(requestError.response?.data?.error || "Unable to load nodes.");
+      setError(requestErrorMessage(requestError, "Unable to load nodes."));
     }
   };
 
@@ -57,7 +70,7 @@ export default function Nodes() {
       setOpen(false);
       await load();
     } catch (requestError: any) {
-      setError(requestError.response?.data?.error || "Node creation failed.");
+      setError(requestErrorMessage(requestError, "Node creation failed."));
     } finally {
       setBusy(null);
     }
@@ -71,7 +84,7 @@ export default function Nodes() {
       await axios({ method, url });
       await load();
     } catch (requestError: any) {
-      setError(requestError.response?.data?.error || `Node action failed: ${actionName}`);
+      setError(requestErrorMessage(requestError, `Node action failed: ${actionName}`));
     } finally {
       setBusy(null);
     }
@@ -83,7 +96,7 @@ export default function Nodes() {
       const response = await axios.get(`/api/nodes/${id}/health`);
       setHealth((current) => ({ ...current, [id]: response.data }));
     } catch (requestError: any) {
-      setError(requestError.response?.data?.error || "Node health check failed.");
+      setError(requestErrorMessage(requestError, "Node health check failed."));
     } finally {
       setBusy(null);
     }
@@ -121,7 +134,7 @@ export default function Nodes() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 gap-3">
                   <div className="snx-brand-mark h-11 w-11"><Server className="h-5 w-5" /></div>
-                  <div className="min-w-0"><h2 className="truncate font-semibold text-foreground">{node.name}</h2><p className="truncate font-mono text-xs text-muted-foreground">{node.fqdn || node.hostname}:{node.apiPort}</p><p className="mt-1 text-[11px] text-muted-foreground">{node.os || "Linux daemon"} · {node.architecture || "architecture pending"}</p></div>
+                  <div className="min-w-0"><h2 className="truncate font-semibold text-foreground">{node.name}</h2><p className="truncate font-mono text-xs text-muted-foreground">{endpointLabel(node)}</p><p className="mt-1 text-[11px] text-muted-foreground">{node.os || "Linux daemon"} · {node.architecture || "architecture pending"}{node.behindProxy ? " · proxied ingress" : ""}</p></div>
                 </div>
                 <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] ${statusClass(node.status)}`}>{node.status || "OFFLINE"}</span>
               </div>
@@ -173,7 +186,7 @@ export default function Nodes() {
                 {([['memory','Total memory (MB)','8192'],['memoryOverallocate','Memory over-allocation (%)','0'],['disk','Total disk (GB)','100'],['diskOverallocate','Disk over-allocation (%)','0'],['cpu','CPU limit (%)','100'],['apiPort','Daemon port','6768'],['sftpPort','Daemon SFTP port','2022']] as const).map(([key, label, placeholder]) => <label key={key} className="block text-xs font-medium text-muted-foreground">{label}<input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} inputMode="numeric" min={key.includes('Overallocate') ? -1 : 1} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>)}
               </div>
               <label className="mt-3 block text-xs font-medium text-muted-foreground">Server file directory<input value={form.serverDirectory || "/var/lib/shironex/servers"} onChange={(event) => setForm((current) => ({ ...current, serverDirectory: event.target.value }))} placeholder="/var/lib/shironex/servers" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
-              <div className="mt-5 space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={form.tls} onChange={(event) => setForm((current) => ({ ...current, tls: event.target.checked }))} /> Use HTTPS/TLS for daemon communication</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.behindProxy} onChange={(event) => setForm((current) => ({ ...current, behindProxy: event.target.checked }))} /> Behind a reverse proxy</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.createCloudflareDns} onChange={(event) => setForm((current) => ({ ...current, createCloudflareDns: event.target.checked }))} /> Create Cloudflare DNS automatically</label><p className="text-xs leading-5 text-muted-foreground">After creation, run the generated command as root on the node VPS. The one-time token expires after 15 minutes and is never stored in plaintext.</p></div>
+              <div className="mt-5 space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={form.tls} onChange={(event) => setForm((current) => ({ ...current, tls: event.target.checked }))} /> Use HTTPS/TLS for daemon communication</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.behindProxy} onChange={(event) => setForm((current) => ({ ...current, behindProxy: event.target.checked, tls: event.target.checked ? true : current.tls }))} /> Behind a reverse proxy</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.createCloudflareDns} onChange={(event) => setForm((current) => ({ ...current, createCloudflareDns: event.target.checked }))} /> Create Cloudflare DNS automatically</label>{form.behindProxy && <div className="space-y-2 rounded-xl border border-violet-300/15 bg-violet-300/5 p-3"><p className="text-xs font-medium text-violet-200">Optional Cloudflare Access service token</p><input value={form.cloudflareAccessClientId} onChange={(event) => setForm((current) => ({ ...current, cloudflareAccessClientId: event.target.value }))} placeholder="Client ID" className="w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-sm text-foreground outline-none focus:border-cyan-300/50" /><input type="password" autoComplete="new-password" value={form.cloudflareAccessClientSecret} onChange={(event) => setForm((current) => ({ ...current, cloudflareAccessClientSecret: event.target.value }))} placeholder="Client secret (stored encrypted)" className="w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-sm text-foreground outline-none focus:border-cyan-300/50" /></div>}<p className="text-xs leading-5 text-muted-foreground">For a Cloudflare Tunnel or Zero Trust public hostname, enter the FQDN, enable HTTPS/TLS and Behind a reverse proxy. ShiroNex will call the public endpoint on 443 instead of appending the private daemon port. After creation, run the generated command as root on the node VPS.</p></div>
               <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="snx-secondary-button">Cancel</button><button type="button" disabled={busy === "create" || !form.name.trim() || !form.hostname.trim()} onClick={() => void create()} className="snx-primary-button">{busy === "create" ? "Creating…" : "Create Node"}</button></div>
             </section>
           </div>

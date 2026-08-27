@@ -325,6 +325,7 @@ install_panel() {
   check_os
   check_network
   install_base_dependencies
+  install_docker
   [[ -d "$APP_DIR/.data" || -f "$APP_DIR/.env" ]] && backup
   bootstrap_source
   configure_panel
