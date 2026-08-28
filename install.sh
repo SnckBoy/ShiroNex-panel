@@ -542,19 +542,46 @@ repair_all() {
   ok "Repair complete"
 }
 
-uninstall_all() {
-  section "Uninstall ShiroNex"
-  step "Backups are preserved unless you remove them separately"
-  require_root
-  tty_confirm "Remove ShiroNex application/services? Backups are preserved. [y/N] " || return 0
-
+uninstall_panel() {
+  backup
   pm2 delete "$APP_NAME" >/dev/null 2>&1 || true
   pm2 save >/dev/null 2>&1 || true
+  rm -rf "$APP_DIR"
+  ok "Panel removed. Node service and node data were left untouched. Backup preserved in $BACKUP_ROOT."
+}
+
+uninstall_node() {
+  backup
   systemctl disable --now "$NODE_SERVICE" >/dev/null 2>&1 || true
   rm -f "/etc/systemd/system/$NODE_SERVICE.service"
   systemctl daemon-reload
-  rm -rf "$APP_DIR" "$NODE_DIR" "$NODE_CONFIG_DIR"
-  warn "ShiroNex removed. Backups remain in $BACKUP_ROOT."
+  rm -rf "$NODE_DIR" "$NODE_CONFIG_DIR"
+  if tty_confirm "Also delete Minecraft server data in $NODE_DATA_DIR? This cannot be undone. [y/N] "; then
+    rm -rf "$NODE_DATA_DIR"
+    warn "Node and Minecraft server data removed. Backup preserved in $BACKUP_ROOT."
+  else
+    ok "Node service/config removed. Minecraft server data was preserved at $NODE_DATA_DIR."
+  fi
+}
+
+uninstall_all() {
+  section "Uninstall ShiroNex"
+  step "Choose exactly which component to remove; backups are created first"
+  require_root
+  printf '\n  [1] Panel only\n  [2] Node only\n  [3] Panel and node\n  [0] Cancel\n\n'
+  local choice
+  tty_read "Remove: " choice
+  case "$choice" in
+    1) tty_confirm "Remove the panel only? The node will remain installed. [y/N] " && uninstall_panel ;;
+    2) tty_confirm "Remove the node only? The panel will remain installed. [y/N] " && uninstall_node ;;
+    3)
+      tty_confirm "Remove both panel and node? Backups will be preserved. [y/N] " || return 0
+      uninstall_panel
+      uninstall_node
+      ;;
+    0) info "Uninstall cancelled." ;;
+    *) warn "Invalid uninstall selection." ;;
+  esac
 }
 
 system_info() {
@@ -610,6 +637,11 @@ main() {
     panel) install_panel ;;
     docker) install_panel_docker ;;
     node) install_node ;;
+    node-update|node-reconfigure|node-restart)
+      bootstrap_source
+      shift
+      bash "$SOURCE_DIR/node-update.sh" "$@"
+      ;;
     both) install_panel; install_local_node ;;
     ssl) configure_ssl ;;
     update) update_all ;;
@@ -621,7 +653,7 @@ main() {
     users|user|create-user) manage_users ;;
     menu) menu ;;
     -h|--help)
-      echo "Usage: sudo bash install.sh [panel|docker|node|both|ssl|update|repair|backup|diagnostics|uninstall|info|users]"
+      echo "Usage: sudo bash install.sh [panel|docker|node|node-update|both|ssl|update|repair|backup|diagnostics|uninstall|info|users]"
       ;;
     *) fail "Unknown action: $1" ;;
   esac

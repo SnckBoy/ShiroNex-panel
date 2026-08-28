@@ -264,6 +264,42 @@ Do not copy the credential from one node to another. If a node credential is exp
 | `journalctl -u shironex-node -f` | Follow node logs |
 | `/opt/shironex-node/update.sh` | Reinstall dependencies, rebuild, and restart |
 | `/opt/shironex-node/uninstall.sh` | Remove the daemon while preserving server data |
+| `curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh \| sudo bash -s -- node-update` | Update node runtime settings and restart the daemon |
+
+### Edit an existing node in the panel
+
+Open **Nodes → Edit** as Owner or Admin. You can change the node name, description, hostname/FQDN, public or internal IP, daemon port, SFTP port, location, visibility, TLS/proxy mode, Cloudflare Access Client ID/Secret, resource limits, server directory, and Docker socket. The existing node credential is preserved. Save the changes, then run **Test health** and **Reconnect**.
+
+For a Cloudflare Tunnel, use the public endpoint `https://node.example.com` without `:6768`, enable TLS and **Behind a reverse proxy**, and configure the Tunnel origin as `http://127.0.0.1:6768`. For direct temporary testing, use `http://NODE_PUBLIC_IP:6768` with TLS and proxy mode disabled.
+
+### Reconfigure and restart the node from one command
+
+Run this on the node VPS after changing local daemon settings. It preserves the node credential, containers, worlds, allocations, and server data:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash -s -- node-update --port 6768
+```
+
+The command accepts `--panel`, `--node-id`, `--port`, `--server-directory`, and `--docker-socket`. It validates and atomically writes `/etc/shironex-node/config.json` with mode 600, then restarts `shironex-node.service`. Use `--no-restart` to update the file without restarting:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash -s -- node-update \
+  --panel https://panel.example.com \
+  --node-id NODE_ID \
+  --port 6768 \
+  --server-directory /var/lib/shironex/servers \
+  --docker-socket /var/run/docker.sock
+```
+
+### Uninstall panel or node separately
+
+Run:
+
+```bash
+sudo bash /opt/shironex-panel/install.sh uninstall
+```
+
+The installer now asks which component to remove: **Panel only**, **Node only**, **Panel and node**, or **Cancel**. Panel-only removal leaves the node service and node data untouched. Node-only removal leaves the panel untouched and asks separately whether Minecraft server data should be deleted. A private backup is created before removal, and server data is preserved unless you explicitly confirm its deletion.
 
 The node daemon exposes authenticated internal endpoints such as `/v1/health`, `/v1/stats`, server lifecycle actions, logs, commands, and restricted file operations. These endpoints are for the panel and should not be treated as a public user API.
 

@@ -84,7 +84,7 @@ For production, put ShiroNex behind HTTPS using your preferred reverse proxy and
 6. ShiroNex displays a **temporary setup command**.
 7. Copy that command and run it as root on the separate Ubuntu/Debian node VPS.
 
-The command is conceptually. The node bootstrap supports Ubuntu 20.04+ on `amd64` or `arm64`; it applies the same Node.js and Docker fallbacks as the panel installer:
+The command is conceptually. The node bootstrap supports Ubuntu 20.04+ on `amd64` or `arm64`; it applies the same Node.js and Docker fallbacks as the panel installer. The current one-click node command is:
 
 ```bash
 curl -fsSL https://YOUR-SHIRONEX-DOMAIN/node.sh | bash -s -- \
@@ -154,6 +154,52 @@ Uninstall the daemon without deleting server data:
 ```bash
 sudo /opt/shironex-node/uninstall.sh
 ```
+
+### Edit an existing node
+
+Open **Nodes → Edit** on the panel. The edit form lets an Owner or Admin update the node name, description, hostname/FQDN, public and internal IPs, daemon and SFTP ports, location, visibility, TLS/proxy mode, Cloudflare Access Client ID/Secret, resource limits, server directory, and Docker socket. The existing ShiroNex node credential is preserved when saving changes. After changing the public endpoint, use **Test health** and then **Reconnect**.
+
+For a Cloudflare Tunnel, use the public hostname without the local daemon port, for example `https://node.example.com`, with TLS and **Behind a reverse proxy** enabled. The Tunnel should forward to `http://127.0.0.1:6768`. For temporary direct-IP testing, use `http://103.6.168.143:6768` with TLS and proxy mode disabled.
+
+### Reconfigure and restart a node from one command
+
+Run this on the node VPS after changing local daemon settings. It preserves the node credential, server worlds, containers, and allocations:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash -s -- node-update --port 6768
+```
+
+Additional supported options are:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SnckBoy/ShiroNex-panel/main/install.sh | sudo bash -s -- node-update \
+  --panel https://panel.example.com \
+  --node-id NODE_ID \
+  --port 6768 \
+  --server-directory /var/lib/shironex/servers \
+  --docker-socket /var/run/docker.sock
+```
+
+The command updates only the supplied fields, validates the JSON configuration, atomically writes it with mode 600, and restarts `shironex-node.service`. Use `--no-restart` when you want to review the configuration change before restarting. A direct restart command is:
+
+```bash
+sudo systemctl restart shironex-node
+sudo systemctl status shironex-node --no-pager
+```
+
+### Uninstall only what you choose
+
+Running `sudo bash install.sh uninstall` now opens a component menu:
+
+```text
+[1] Panel only
+[2] Node only
+[3] Panel and node
+[0] Cancel
+```
+
+Panel-only removal leaves the node service and node data untouched. Node-only removal leaves the panel untouched and asks separately whether Minecraft server data should be deleted. The installer creates a private backup before removal, and server data is preserved unless you explicitly confirm its deletion.
+
 
 ## Security model
 
