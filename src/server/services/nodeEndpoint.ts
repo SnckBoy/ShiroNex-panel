@@ -25,7 +25,13 @@ export const nodeBaseUrl = (node: any) => {
   const protocol = node?.behindProxy ? "https" : (node?.tls === false ? "http" : "https");
   const parsed = new URL(hasScheme(configured) ? configured : `${protocol}://${configured}`);
   if (!parsed.port) {
-    const defaultPort = node?.behindProxy ? (parsed.protocol === "https:" ? 443 : 80) : Number(node?.apiPort || 6768);
+    // `apiPort` is the current schema. Keep `daemonPort` and legacy `port`
+    // fallbacks so nodes created by older panel versions remain reachable.
+    const configuredApiPort = Number(node?.apiPort ?? node?.daemonPort ?? node?.port);
+    const directPort = Number.isInteger(configuredApiPort) && configuredApiPort > 0 && configuredApiPort <= 65535
+      ? configuredApiPort
+      : 6768;
+    const defaultPort = node?.behindProxy ? (parsed.protocol === "https:" ? 443 : 80) : directPort;
     parsed.port = String(defaultPort);
   }
   parsed.hash = "";

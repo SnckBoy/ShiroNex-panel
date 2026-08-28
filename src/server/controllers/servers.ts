@@ -43,13 +43,17 @@ const nodeOperationError = (error: any, fallback: string) => {
   const nodeUnavailable = error?.nodeUnavailable === true;
   const timeout = error?.timeout === true;
   const authFailed = error?.authFailed === true || Number(error?.statusCode) === 401;
+  const responseInvalid = error?.nodeResponseInvalid === true;
   const message = String(error?.message || error?.responseData?.error || fallback);
   const statusCode = Number(error?.statusCode || (dockerUnavailable || nodeUnavailable ? 503 : 500));
-  const safeStatus = authFailed ? 502 : ((dockerUnavailable || nodeUnavailable || timeout) ? 503 : (statusCode >= 400 && statusCode < 600 ? statusCode : 500));
+  const safeStatus = authFailed ? 502 : (responseInvalid ? 502 : ((dockerUnavailable || nodeUnavailable || timeout) ? 503 : (statusCode >= 400 && statusCode < 600 ? statusCode : 500)));
   const body: any = dockerUnavailable ? { error: message, dockerUnavailable: true } : { error: message };
   if (authFailed) {
     body.nodeAuthenticationFailed = true;
     body.hint = "The daemon rejected the node credential. Reconnect or rotate the node credential, then reinstall the node configuration if necessary.";
+  } else if (responseInvalid) {
+    body.nodeResponseInvalid = true;
+    body.hint = "The endpoint responded, but it is not a ShiroNex daemon response. Check the FQDN route, Cloudflare Access policy, tunnel ingress, and daemon version.";
   } else if (nodeUnavailable || timeout) {
     body.nodeUnavailable = nodeUnavailable;
     body.timeout = timeout;

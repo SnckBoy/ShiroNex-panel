@@ -102,7 +102,16 @@ const remoteNode = async (nodeId?:string) => {
 
 export const createServerContainer = async (serverData: any, nodeId?: string) => {
   const remote = await remoteNode(nodeId || serverData.nodeId);
-  if (remote) return (await nodeControl.createServer(remote, serverData)).containerId;
+  if (remote) {
+    const response: any = await nodeControl.createServer(remote, serverData);
+    if (!response?.containerId || typeof response.containerId !== "string") {
+      const error: any = new Error("Node returned no container ID. Check the node daemon version, Cloudflare Access policy, tunnel ingress, and node credential.");
+      error.statusCode = 502;
+      error.nodeResponseInvalid = true;
+      throw error;
+    }
+    return response.containerId;
+  }
   const docker = await getDocker(nodeId || serverData.nodeId);
   if (isSandbox) {
     mockState[serverData.id] = false;

@@ -48,8 +48,19 @@ export const nodeRequest = async <T=any>(node: NodeRecord, method: string, path:
   }
 };
 
+const requireHealthResponse = async (node: NodeRecord) => {
+  const response: any = await nodeRequest(node, "GET", "/v1/health", undefined, 10000);
+  if (!response || typeof response !== "object" || response.ok !== true) {
+    const error: any = new Error("Node endpoint returned an unexpected response. Check the FQDN, Cloudflare Access policy, tunnel ingress, and daemon authentication.");
+    error.statusCode = 502;
+    error.nodeResponseInvalid = true;
+    throw error;
+  }
+  return response;
+};
+
 export const nodeControl = {
-  health: (n:NodeRecord) => nodeRequest(n,"GET","/v1/health",undefined,10000),
+  health: requireHealthResponse,
   stats: (n:NodeRecord) => nodeRequest(n,"GET","/v1/stats",undefined,10000),
   // Image pulls can legitimately take several minutes on a new node.
   createServer: (n:NodeRecord,d:any) => nodeRequest(n,"POST","/v1/servers",d,Math.max(300000, defaultTimeout)),

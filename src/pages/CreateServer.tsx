@@ -59,6 +59,7 @@ export default function CreateServer() {
   const [totalSystemRam, setTotalSystemRam] = useState<number>(0);
   const [showRamWarning, setShowRamWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<{ status?: number; category: string; hint?: string; code?: string } | null>(null);
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -137,6 +138,7 @@ export default function CreateServer() {
     setLoading(true);
     setCreateProgress(0);
     setError(null);
+    setDiagnostic(null);
 
     const interval = setInterval(() => {
       setCreateProgress((prev) => {
@@ -171,10 +173,21 @@ export default function CreateServer() {
     } catch (e: any) {
       clearInterval(interval);
       setCreateProgress(0);
-      const data = e.response?.data;
+      const data = e.response?.data || {};
       const message = data?.error || e.message || "Failed to create server instance";
-      const hint = data?.hint ? ` ${data.hint}` : "";
-      setError(`${message}${hint}`);
+      const category = data?.dockerUnavailable
+        ? "Docker runtime unavailable"
+        : data?.nodeAuthenticationFailed
+          ? "Node authentication rejected"
+          : data?.nodeResponseInvalid
+            ? "Invalid node response"
+            : data?.timeout
+              ? "Node request timed out"
+              : data?.nodeUnavailable
+                ? "Node unreachable"
+                : "Deployment failed";
+      setError(message);
+      setDiagnostic({ status: e.response?.status, category, hint: data?.hint, code: e.code });
       setLoading(false);
     }
   };
@@ -215,9 +228,33 @@ export default function CreateServer() {
             />
           </div>
           
+          {(user?.role === "admin" || user?.role === "owner") && (
+            <div className="relative z-20">
+              <label className="block text-sm font-medium text-foreground-muted mb-2 flex items-center">
+                <Globe className="w-4 h-4 mr-2 text-indigo-400" /> Deployment Node
+              </label>
+              <SearchableDropdown
+                value={nodeId}
+                onChange={(value) => { setNodeId(value); setAllocationId(""); }}
+                options={nodes.filter((n: any) => n.status === "ONLINE").map((n: any) => ({ value: n.id, label: `${n.name} · ${n.fqdn || n.hostname || n.publicIp || "address pending"} · ONLINE` }))}
+                placeholder="Select an online node..."
+                searchPlaceholder="Search online nodes..."
+              />
+              <p className="text-xs text-muted-foreground mt-2">Only nodes with a fresh authenticated heartbeat are shown.</p>
+            </div>
+          )}
+
           <div className="grid md:grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium text-foreground-muted mb-2">Node</label><select required value={nodeId} onChange={e=>{setNodeId(e.target.value);setAllocationId("");}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground"><option value="">Select an online node</option>{nodes.filter((n:any)=>n.status==="ONLINE").map((n:any)=><option key={n.id} value={n.id}>{n.name} · {n.fqdn || n.hostname || n.publicIp} · ONLINE</option>)}</select><p className="mt-1.5 text-xs text-muted-foreground">Nodes become selectable only after the daemon has registered and sent a heartbeat.</p></div>
-            <div><label className="block text-sm font-medium text-foreground-muted mb-2">Allocation</label><select required value={allocationId} onChange={e=>{setAllocationId(e.target.value);const a=allocations.find((x:any)=>x.id===e.target.value);if(a)setPort(String(a.portStart));}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground"><option value="">Select allocation</option>{allocations.filter((a:any)=>a.nodeId===nodeId && !a.assignedServerId).map((a:any)=><option key={a.id} value={a.id}>{a.ip}:{a.portStart}{a.portEnd!==a.portStart?`-${a.portEnd}`:""}</option>)}</select><p className="mt-1.5 text-xs text-muted-foreground">Create an allocation for this node before deploying a server.</p></div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-foreground-muted mb-2 flex items-center">
+                <Network className="w-4 h-4 mr-2 text-cyan-400" /> Allocation
+              </label>
+              <select required disabled={!nodeId} value={allocationId} onChange={e=>{setAllocationId(e.target.value);const a=allocations.find((x:any)=>x.id===e.target.value);if(a)setPort(String(a.portStart));}} className="w-full bg-muted-subtle border border-border rounded-xl px-4 py-3 text-foreground disabled:cursor-not-allowed disabled:opacity-50">
+                <option value="">{nodeId ? "Select an available allocation" : "Select a node first"}</option>
+                {allocations.filter((a:any)=>a.nodeId===nodeId && !a.assignedServerId).map((a:any)=><option key={a.id} value={a.id}>{a.ip}:{a.portStart}{a.portEnd!==a.portStart?`-${a.portEnd}`:""}</option>)}
+              </select>
+              <p className="mt-1.5 text-xs text-muted-foreground">The selected allocation reserves the server port on this node.</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-muted-subtle p-5 rounded-2xl border border-border-subtle">
@@ -333,21 +370,7 @@ export default function CreateServer() {
             <p className="text-xs text-muted-foreground mt-2">Select which user owns and has access to this server.</p>
           </div>
 
-          {(user?.role === "admin" || user?.role === "owner") && (
-            <div className="md:col-span-2 relative z-20 mt-4">
-              <label className="block text-sm font-medium text-foreground-muted mb-2 flex items-center">
-                <Globe className="w-4 h-4 mr-2 text-indigo-400" /> Deployment Node
-              </label>
-              <SearchableDropdown
-                value={nodeId}
-                onChange={setNodeId}
-                options={nodes.filter((n: any) => n.status === "ONLINE").map((n: any) => ({ value: n.id, label: `${n.name} (${n.fqdn || n.hostname || n.publicIp || "address pending"})` }))}
-                placeholder="Select a node..."
-                searchPlaceholder="Search nodes..."
-              />
-              <p className="text-xs text-muted-foreground mt-2">Select which physical node this server container will be deployed to.</p>
-            </div>
-          )}
+
 
           <div className="md:col-span-2 relative z-10">
             <label className="block text-sm font-medium text-foreground-muted mb-3 flex items-center">
@@ -430,9 +453,17 @@ export default function CreateServer() {
                </div>
              )}
              {error && !error.includes("Port") && (
-               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start text-red-400 mb-6">
-                 <AlertTriangle className="w-5 h-5 mr-3 shrink-0 mt-0.5" />
-                 <p className="text-sm font-medium">{error}</p>
+               <div role="alert" aria-live="assertive" className="p-4 bg-red-500/10 border border-red-500/25 rounded-xl flex items-start text-red-300 mb-6 shadow-lg shadow-red-950/20">
+                 <AlertTriangle className="w-5 h-5 mr-3 shrink-0 mt-0.5 text-red-400" />
+                 <div className="min-w-0 space-y-1.5">
+                   <div className="flex flex-wrap items-center gap-2">
+                     <p className="text-sm font-semibold text-red-200">{diagnostic?.category || "Deployment failed"}</p>
+                     {diagnostic?.status && <span className="rounded-full border border-red-400/30 bg-red-400/10 px-2 py-0.5 text-[10px] font-mono font-bold text-red-200">HTTP {diagnostic.status}</span>}
+                   </div>
+                   <p className="text-sm leading-relaxed break-words">{error}</p>
+                   {diagnostic?.hint && <p className="text-xs leading-relaxed text-red-200/75"><span className="font-semibold text-red-200">Next step:</span> {diagnostic.hint}</p>}
+                   {diagnostic?.code && <p className="text-[11px] font-mono text-red-200/60">Transport code: {diagnostic.code}</p>}
+                 </div>
                </div>
              )}
              
