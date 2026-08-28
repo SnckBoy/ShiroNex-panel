@@ -42,10 +42,20 @@ export const nodeConnection = (node: any): NodeEndpoint => {
     headers["CF-Access-Client-Secret"] = decryptSecret(String(node.cloudflareAccessClientSecret));
   }
 
+  let credential: string;
+  try {
+    credential = decryptSecret(String(node.credential || ""));
+  } catch {
+    const error: any = new Error("Node credential is invalid or unreadable. Rotate the node credential and reinstall the generated daemon configuration.");
+    error.statusCode = 502;
+    error.authFailed = true;
+    throw error;
+  }
+
   return {
     id: String(node.id),
     baseUrl: nodeBaseUrl(node),
-    credential: decryptSecret(String(node.credential || "")),
+    credential,
     headers: Object.keys(headers).length ? headers : undefined,
   };
 };

@@ -45,7 +45,7 @@ const nodeOperationError = (error: any, fallback: string) => {
   const authFailed = error?.authFailed === true || Number(error?.statusCode) === 401;
   const message = String(error?.message || error?.responseData?.error || fallback);
   const statusCode = Number(error?.statusCode || (dockerUnavailable || nodeUnavailable ? 503 : 500));
-  const safeStatus = authFailed ? 502 : (statusCode >= 400 && statusCode < 600 ? statusCode : (dockerUnavailable || nodeUnavailable ? 503 : 500));
+  const safeStatus = authFailed ? 502 : ((dockerUnavailable || nodeUnavailable || timeout) ? 503 : (statusCode >= 400 && statusCode < 600 ? statusCode : 500));
   const body: any = dockerUnavailable ? { error: message, dockerUnavailable: true } : { error: message };
   if (authFailed) {
     body.nodeAuthenticationFailed = true;
