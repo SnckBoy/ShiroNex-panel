@@ -54,9 +54,13 @@ const nodeOperationError = (error: any, fallback: string) => {
   } else if (responseInvalid) {
     body.nodeResponseInvalid = true;
     body.hint = "The endpoint responded, but it is not a ShiroNex daemon response. Check the FQDN route, Cloudflare Access policy, tunnel ingress, and daemon version.";
-  } else if (nodeUnavailable || timeout) {
+  } else if (timeout) {
     body.nodeUnavailable = nodeUnavailable;
-    body.timeout = timeout;
+    body.timeout = true;
+    body.hint = "The node or Cloudflare proxy did not complete the request in time. Confirm the daemon is running, then check the FQDN, Cloudflare Tunnel/Zero Trust ingress, daemon port, firewall, and image-pull connectivity. Initial Minecraft image pulls may take several minutes.";
+  } else if (nodeUnavailable) {
+    body.nodeUnavailable = true;
+    body.timeout = false;
     body.hint = "Verify the node FQDN, DNS, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.";
   }
   return { statusCode: safeStatus, body };
@@ -216,7 +220,8 @@ export const createServer = async (req: Request, res: Response) => {
       ...failure.body,
       nodeUnavailable: err?.nodeUnavailable === true,
       timeout: err?.timeout === true,
-      hint: "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
+      nodeResponseInvalid: err?.nodeResponseInvalid === true,
+      hint: failure.body?.hint || "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
     });
   }
 
@@ -282,7 +287,8 @@ export const createServer = async (req: Request, res: Response) => {
       ...failure.body,
       nodeUnavailable: err?.nodeUnavailable === true,
       timeout: err?.timeout === true,
-      hint: "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
+      nodeResponseInvalid: err?.nodeResponseInvalid === true,
+      hint: failure.body?.hint || "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
     });
   }
 };
