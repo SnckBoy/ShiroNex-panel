@@ -4,7 +4,7 @@ set -Eeuo pipefail
 PANEL_URL=""
 NODE_ID=""
 SETUP_TOKEN=""
-NODE_PORT="${NODE_PORT:-6768}"
+NODE_PORT="${NODE_PORT:-8080}"
 NODE_DIR="${SHIRONEX_NODE_DIR:-/opt/shironex-node}"
 CONFIG_DIR="/etc/shironex-node"
 DATA_DIR="/var/lib/shironex/servers"
@@ -24,7 +24,7 @@ Usage:
     --panel https://panel.example.com \
     --node-id NODE_ID \
     --setup-token ONE_TIME_TOKEN \
-    --port 6768
+    --port 8080
 EOF
 }
 

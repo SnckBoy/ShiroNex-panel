@@ -118,7 +118,7 @@ export default function LiveTelemetry({ serverId, server }: { serverId: string; 
           <div className={`flex items-center gap-2 text-xs ${statusColor}`}><Wifi className="h-3.5 w-3.5" />{statusText}</div>
         </header>
 
-        {effectiveStatus !== "live" && <div className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-4 text-sm text-muted-foreground"><div className="flex items-start gap-3"><Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /><p><strong className="text-foreground">{effectiveStatus === "stale" ? "Stale telemetry." : "Telemetry unavailable."}</strong> ShiroNex will not substitute fake zero values while the node is offline or reconnecting.</p></div></div>}
+        {effectiveStatus !== "live" && <div className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-4 text-sm text-muted-foreground"><div className="flex items-start gap-3"><Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /><p><strong className="text-foreground">{effectiveStatus === "stale" ? "Stale telemetry." : "Telemetry unavailable."}</strong> Snck will not substitute fake zero values while the node is offline or reconnecting.</p></div></div>}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="CPU" value={cpuValue} detail={cpuDetail} icon={Cpu} color="#00F2FE" samples={samplesWithFallback} field="cpu" chartMin={0} chartMax={latest.cpu.capacityPercent ?? 100} unavailable={latest.cpu.usagePercent === null} />

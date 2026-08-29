@@ -101,7 +101,7 @@ export default function Setup() {
           </div>
           <p className="text-sm uppercase tracking-[0.3em] text-indigo-300 mb-4">Secure first-run setup</p>
           <h1 className="text-5xl font-bold leading-tight mb-6">Create the account that controls your infrastructure.</h1>
-          <p className="text-lg text-muted-foreground leading-relaxed">The first account is created once, receives the Owner role, and becomes the root of your ShiroNex permission hierarchy.</p>
+          <p className="text-lg text-muted-foreground leading-relaxed">The first account is created once, receives the Owner role, and becomes the root of your Snck permission hierarchy.</p>
         </div>
       </section>
 
@@ -109,8 +109,8 @@ export default function Setup() {
         <div className="w-full max-w-md">
           <div className="mb-8">
             <div className="flex items-center gap-3 lg:hidden mb-8"><div className="w-10 h-10 rounded-xl bg-indigo-600 grid place-items-center"><Server size={19} /></div><span className="text-xl font-bold">{panelName}</span></div>
-            <p className="text-sm font-medium text-indigo-400 mb-2">Welcome to ShiroNex</p>
-            <h2 className="text-3xl font-bold mb-2">Create ShiroNex Owner Account</h2>
+            <p className="text-sm font-medium text-indigo-400 mb-2">Welcome to Snck</p>
+            <h2 className="text-3xl font-bold mb-2">Create Snck Owner Account</h2>
             <p className="text-muted-foreground">This protected setup is available only while no user exists.</p>
           </div>
 
@@ -123,7 +123,7 @@ export default function Setup() {
             <label className="block space-y-2"><span className="text-sm font-medium">Password</span><span className="relative block"><LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="At least 8 characters" /></span></label>
             <label className="block space-y-2"><span className="text-sm font-medium">Confirm password</span><span className="relative block"><LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 outline-none focus:border-indigo-500" placeholder="Repeat your password" /></span></label>
 
-            <p className="text-xs leading-relaxed text-muted-foreground">Use at least 8 characters. ShiroNex never creates or displays a default password.</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">Use at least 8 characters. Snck never creates or displays a default password.</p>
             <button type="submit" disabled={submitting || Boolean(success)} className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"><span className="inline-flex items-center gap-2">{submitting ? "Creating Owner account..." : "Create Owner account"}{!submitting && <ArrowRight size={18} />}</span></button>
           </form>
 

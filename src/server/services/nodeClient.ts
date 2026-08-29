@@ -68,6 +68,7 @@ const requireHealthResponse = async (node: NodeRecord) => {
 
 export const nodeControl = {
   health: requireHealthResponse,
+  restartDaemon: (n:NodeRecord) => nodeRequest(n, "POST", "/v1/daemon/restart", undefined, 15000),
   stats: (n:NodeRecord) => nodeRequest(n,"GET","/v1/stats",undefined,10000),
   // Image pulls can legitimately take several minutes on a new node.
   createServer: (n:NodeRecord,d:any) => nodeRequest(n,"POST","/v1/servers",d,deploymentTimeout),

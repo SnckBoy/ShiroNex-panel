@@ -33,7 +33,7 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
   },
   {
     id: "notif-3",
-    title: "Welcome to ShiroNex",
+    title: "Welcome to Snck",
     message: "Create high-performance game servers with one-click deployment.",
     type: "info",
     timestamp: "1h ago",

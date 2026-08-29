@@ -18,7 +18,7 @@ const getSystemAppearance = () =>
 export const SettingsContext = createContext<any>(null);
 
 export const SettingsProvider = ({ children }: { children: React.ReactNode }) => {
-  const [panelName, setPanelName] = useState<string>("ShiroNex");
+  const [panelName, setPanelName] = useState<string>("Snck");
   const [panelLogo, setPanelLogo] = useState<string>("");
   const [panelBackgroundImage, setPanelBackgroundImage] = useState<string>("");
   const [panelBackgroundBlur, setPanelBackgroundBlur] = useState<number>(10);
@@ -84,7 +84,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (settings.firebaseAppId !== undefined) setFirebaseAppId(settings.firebaseAppId);
     } catch (error) {
       // The UI keeps safe defaults if the public settings endpoint is unavailable.
-      console.warn("Unable to load ShiroNex settings", error);
+      console.warn("Unable to load Snck settings", error);
     }
   };
 

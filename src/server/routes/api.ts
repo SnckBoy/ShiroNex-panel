@@ -23,7 +23,7 @@ router.use("/cloudflare", cloudflareRoutes);
 router.get("/settings", async (req, res) => {
   const settings = await readJSON("settings.json") || {};
   res.json({ 
-    panelName: settings.panelName || "ShiroNex",
+    panelName: settings.panelName || "Snck",
     panelLogo: settings.panelLogo || "",
     panelBackgroundImage: settings.panelBackgroundImage || "",
     panelBackgroundBlur: settings.panelBackgroundBlur !== undefined ? settings.panelBackgroundBlur : 10,

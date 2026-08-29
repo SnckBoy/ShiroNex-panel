@@ -13,7 +13,7 @@ export default function CoreCheckpoint() {
     <main className="snx-core-checkpoint">
       <div className="snx-core-checkpoint__backdrop" aria-hidden="true" />
       <header className="snx-core-checkpoint__intro">
-        <span className="snx-eyebrow">SHIRONEX / VISUAL CHECKPOINT 01</span>
+        <span className="snx-eyebrow">SNCK / VISUAL CHECKPOINT 01</span>
         <h1>Infrastructure Core</h1>
         <p>A single physical visualization for fleet health. Drag the cluster on desktop or touch it on mobile.</p>
       </header>

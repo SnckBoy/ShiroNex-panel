@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PANEL_URL=""; NODE_ID=""; SETUP_TOKEN=""; PORT="6768"
+PANEL_URL=""; NODE_ID=""; SETUP_TOKEN=""; PORT="8080"
 while [[ $# -gt 0 ]]; do case "$1" in --panel) PANEL_URL="$2"; shift 2;; --node-id) NODE_ID="$2"; shift 2;; --setup-token) SETUP_TOKEN="$2"; shift 2;; --port) PORT="$2"; shift 2;; *) echo "Unknown option: $1"; exit 2;; esac; done
 [[ $EUID -eq 0 ]] || { echo "Run this installer as root."; exit 1; }
 [[ -n "$PANEL_URL" && -n "$NODE_ID" && -n "$SETUP_TOKEN" ]] || { echo "Missing --panel, --node-id or --setup-token"; exit 2; }

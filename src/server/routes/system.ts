@@ -198,7 +198,7 @@ router.put("/settings", async (req, res) => {
   } = req.body;
   const settings = await readJSON("settings.json") || {};
   if (panelName !== undefined) {
-    settings.panelName = panelName || "ShiroNex";
+    settings.panelName = panelName || "Snck";
     try {
       const fs = await import("fs/promises");
       const path = await import("path");

@@ -69,6 +69,10 @@ const stats = async () => {
 };
 app.get("/v1/health", auth, async (_req,res) => { const s=await stats(); res.json({ok:true,...s}); });
 app.get("/v1/stats", auth, async (_req,res) => res.json(await stats()));
+app.post("/v1/daemon/restart", auth, async (_req,res) => {
+  res.status(202).json({success:true,restarting:true,message:"Node daemon restart accepted"});
+  setTimeout(() => process.exit(0), 250);
+});
 const find = (id:string) => docker.getContainer(id);
 app.post("/v1/servers", auth, async (req,res) => {
  try {

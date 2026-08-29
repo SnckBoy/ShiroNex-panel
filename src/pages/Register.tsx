@@ -74,7 +74,7 @@ export default function Register() {
 
       <div className="login-layout register-layout">
         <section className="login-brand" aria-label={`${panelName} introduction`}>
-          <div className="brand-kicker"><span className="brand-kicker-dot" /> SHIRONEX CONTROL PLANE</div>
+          <div className="brand-kicker"><span className="brand-kicker-dot" /> SNCK CONTROL PLANE</div>
           <div className="brand-heading">
             <div className="brand-logo">
               {panelLogo ? <img src={panelLogo} alt="" /> : <Server size={28} strokeWidth={1.8} />}

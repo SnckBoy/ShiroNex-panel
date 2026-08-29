@@ -97,7 +97,7 @@ export default function ModpackManager({ serverId }: { serverId: string }) {
     } catch (requestError: any) {
       if (requestError.response?.status === 409 && requestError.response?.data?.requiresConfirmation && !confirmReplace) {
         const shouldReplace = window.confirm(
-          `${item.name} will replace files in this server. ShiroNex will create a pre-import backup first. Continue?`,
+          `${item.name} will replace files in this server. Snck will create a pre-import backup first. Continue?`,
         );
         return shouldReplace ? installRemote(item, true) : false;
       }
@@ -130,7 +130,7 @@ export default function ModpackManager({ serverId }: { serverId: string }) {
     } catch (requestError: any) {
       if (requestError.response?.status === 409 && requestError.response?.data?.requiresConfirmation && !confirmReplace) {
         const shouldReplace = window.confirm(
-          "This server already contains files. ShiroNex will create a pre-import backup before replacing them. Continue?",
+          "This server already contains files. Snck will create a pre-import backup before replacing them. Continue?",
         );
         return shouldReplace ? uploadModpack(file, true) : false;
       }
