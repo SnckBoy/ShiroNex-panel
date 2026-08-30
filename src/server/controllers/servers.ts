@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import { readJSON, writeJSON } from "../services/db.js";
-import { createServerContainer, startContainer, stopContainer, restartContainer, deleteContainer, getContainerStatus, sendContainerCommand, attachContainerSocket, getContainerStats, SUPPORTED_JAVA_VERSIONS } from "../services/docker.js";
+import { createServerContainer, startContainer, stopContainer, restartContainer, deleteContainer, getContainerStatus, sendContainerCommand, attachContainerSocket, getContainerStats, SUPPORTED_JAVA_VERSIONS, defaultDocker } from "../services/docker.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import crypto from "crypto";
 import fs from "fs-extra";
@@ -206,15 +206,33 @@ export const createServer = async (req: Request, res: Response) => {
   if (!selectedNode) return res.status(400).json({ error: "Node not found" });
   if (selectedNode.disabled) return res.status(409).json({ error: "Selected node is disabled" });
   if (selectedNode.maintenance) return res.status(409).json({ error: "Selected node is in maintenance mode; new server creation is blocked" });
-  const heartbeat = selectedNode.lastHeartbeat ? Date.parse(selectedNode.lastHeartbeat) : NaN;
-  const heartbeatTimeout = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
-  if (!Number.isFinite(heartbeat) || Date.now() - heartbeat > heartbeatTimeout) return res.status(409).json({ error: "Selected node is offline. Install the daemon and wait for an authenticated heartbeat before deploying." });
+  if (selectedNode.isLocal) {
+    // Local nodes are managed directly through the panel host Docker socket. They
+    // do not need a remote daemon heartbeat or nodeConnection() preflight.
+    try {
+      await defaultDocker.ping();
+      selectedNode.localReady = true;
+      selectedNode.lastHeartbeat = new Date().toISOString();
+      selectedNode.error = null;
+      await writeJSON("nodes.json", nodes);
+    } catch (err: any) {
+      return res.status(503).json({
+        error: "The local Docker runtime is unavailable.",
+        dockerUnavailable: true,
+        details: String(err?.message || err),
+        hint: "Start Docker Engine and ensure the panel process can access /var/run/docker.sock."
+      });
+    }
+  } else {
+    const heartbeat = selectedNode.lastHeartbeat ? Date.parse(selectedNode.lastHeartbeat) : NaN;
+    const heartbeatTimeout = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
+    if (!Number.isFinite(heartbeat) || Date.now() - heartbeat > heartbeatTimeout) return res.status(409).json({ error: "Selected node is offline. Install the daemon and wait for an authenticated heartbeat before deploying." });
 
-  // ONLINE means the daemon can reach the panel. Preflight the reverse direction
-  // as well, because Cloudflare Tunnel/FQDN ingress can fail independently.
-  try {
-    await nodeControl.health(nodeConnection(selectedNode));
-  } catch (err: any) {
+    // ONLINE means the daemon can reach the panel. Preflight the reverse direction
+    // as well, because Cloudflare Tunnel/FQDN ingress can fail independently.
+    try {
+      await nodeControl.health(nodeConnection(selectedNode));
+    } catch (err: any) {
     const failure = nodeOperationError(err, "The selected node could not be reached.");
     return res.status(failure.statusCode).json({
       ...failure.body,
@@ -222,7 +240,8 @@ export const createServer = async (req: Request, res: Response) => {
       timeout: err?.timeout === true,
       nodeResponseInvalid: err?.nodeResponseInvalid === true,
       hint: failure.body?.hint || "Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall before retrying.",
-    });
+      });
+    }
   }
 
   const users = await readJSON("users.json") || [];
