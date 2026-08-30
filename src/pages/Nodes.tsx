@@ -43,6 +43,7 @@ export default function Nodes() {
   const [restartAfterEdit, setRestartAfterEdit] = useState(true);
   const [created, setCreated] = useState<any>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [health, setHealth] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "8080", sftpPort: "2022", location: "", visibility: "public" as "public" | "private", tls: false, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false, cloudflareAccessClientId: "", cloudflareAccessClientSecret: "" });
@@ -67,6 +68,22 @@ export default function Nodes() {
   }, []);
 
   if (!staffRoles.includes(user?.role || "")) return <div className="p-10 text-center">You do not have permission to manage nodes.</div>;
+
+  const createLocalNode = async () => {
+    if (!window.confirm("Create or refresh the local node using this panel host's Docker runtime?")) return;
+    setBusy("local:create");
+    setError("");
+    setNotice("");
+    try {
+      const response = await axios.post("/api/nodes/local", { port: 8080, dockerHost: "/var/run/docker.sock" });
+      setNotice(response.data?.reused ? "Local node is already configured and Docker is ready." : "Local node created and Docker is ready.");
+      await load();
+    } catch (requestError: any) {
+      setError(requestErrorMessage(requestError, "Local node creation failed."));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const openCreate = () => {
     setEditingNode(null);
@@ -149,11 +166,13 @@ export default function Nodes() {
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => void load()} className="snx-icon-button" aria-label="Refresh nodes"><RefreshCw className="h-4 w-4" /></button>
+          <button type="button" disabled={busy !== null} onClick={() => void createLocalNode()} className="snx-secondary-button"><Server className="h-4 w-4" /> Create Local Node</button>
           <button type="button" onClick={openCreate} className="snx-primary-button"><Plus className="h-4 w-4" /> Create Node</button>
         </div>
       </header>
 
       {error && <div role="alert" className="mb-5 rounded-xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm text-rose-200">{error}</div>}
+      {notice && <div role="status" className="mb-5 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-200">{notice}</div>}
       {created && <div className="mb-6 rounded-2xl border border-emerald-400/25 bg-emerald-400/10 p-5"><div className="flex items-center gap-2 font-semibold text-emerald-200"><ShieldCheck className="h-4 w-4" /> Node created — one-time setup command</div><p className="mt-2 text-xs text-muted-foreground">The token expires in 15 minutes and is not stored in plaintext. Run this command as root on the target VPS.</p><pre className="mt-3 overflow-auto rounded-xl bg-black/60 p-4 text-xs text-emerald-300">curl -fsSL {location.origin}/node.sh | sudo bash -s -- --panel {location.origin} --node-id {created.id} --setup-token {created.setupToken} --port {created.apiPort}</pre><button type="button" onClick={() => setCreated(null)} className="mt-3 text-sm text-emerald-200 underline">Close</button></div>}
 
       <div className="grid gap-4 lg:grid-cols-2">

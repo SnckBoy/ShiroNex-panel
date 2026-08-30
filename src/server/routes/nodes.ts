@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import dns from "dns/promises";
 import tls from "tls";
+import Docker from "dockerode";
 import {readJSON,writeJSON} from "../services/db.js";
 import {requireAdmin} from "../middleware/auth.js";
 import {audit,encryptSecret,hashSecret,randomSecret,rateLimit,decryptSecret} from "../services/security.js";
@@ -15,6 +16,7 @@ const file="nodes.json", setupFile="node_setup_tokens.json";
 
 const sanitize=(n:any)=>{const {credential,credentialHash,cloudflareAccessClientSecret,...safe}=n;return safe};
 const HEARTBEAT_TIMEOUT_MS = Math.max(30000, Number(process.env.NODE_HEARTBEAT_TIMEOUT_MS || 45000));
+const localDockerCheck=async(n:any)=>{const socketPath=String(n?.dockerHost||"/var/run/docker.sock");const docker=new Docker({socketPath});await docker.ping();return {docker:true,system:{status:"ready",socket:socketPath}}};
 const nodeStatus=(n:any, now=Date.now())=>{
  const lastHeartbeat = n.lastHeartbeat ? Date.parse(n.lastHeartbeat) : NaN;
  if (n.maintenance) return "MAINTENANCE";
@@ -22,6 +24,7 @@ const nodeStatus=(n:any, now=Date.now())=>{
  if (n.installing) return "INSTALLING";
  if (n.error) return "ERROR";
  if (n.disabled) return "DISABLED";
+ if (n.isLocal && n.localReady === true) return "ONLINE";
  if (n.isLocal && !n.credentialHash) return "SETUP_REQUIRED";
  return Number.isFinite(lastHeartbeat) && now - lastHeartbeat <= HEARTBEAT_TIMEOUT_MS ? "ONLINE" : "OFFLINE";
 };
@@ -32,6 +35,7 @@ async function publicNodes(){
  return nodes.map((n:any)=>withNodeStatus(n,now));
 }
 router.get("/",async(req,res)=>res.json(await publicNodes()));
+router.post("/local",async(req,res)=>{try{const nodes=await readJSON(file)||[];const port=Number(req.body?.port)||8080;const dockerHost=String(req.body?.dockerHost||"/var/run/docker.sock");if(!Number.isInteger(port)||port<1||port>65535)return res.status(400).json({error:"Local node port must be a valid TCP port"});const existing=nodes.find((x:any)=>x.id==="local");const node=existing||{id:"local",createdAt:new Date().toISOString()};node.name=String(req.body?.name||node.name||"Local Node").trim();node.description=String(req.body?.description||node.description||"Panel host");node.hostname="127.0.0.1";node.fqdn="127.0.0.1";node.publicIp="127.0.0.1";node.apiPort=port;node.sftpPort=Number(req.body?.sftpPort||node.sftpPort||2022);node.tls=false;node.behindProxy=false;node.isLocal=true;node.disabled=false;node.maintenance=false;node.dockerHost=dockerHost;const runtime=await localDockerCheck(node);node.localReady=true;node.lastHeartbeat=new Date().toISOString();node.lastStats=runtime;node.error=null;if(!existing)nodes.push(node);await writeJSON(file,nodes);await audit(existing?"node.local.reused":"node.local.created",req,{nodeId:"local"});res.status(existing?200:201).json({...sanitize(node),status:"ONLINE",local:true,reused:Boolean(existing),runtime});}catch(e:any){res.status(503).json({error:"Local node could not be created because Docker is unavailable",dockerUnavailable:true,details:String(e?.message||e),hint:"Start Docker Engine and ensure the panel process can access the configured Docker socket."})}});
 router.get("/:id",async(req,res)=>{const n=(await readJSON(file)||[]).find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});res.json(withNodeStatus(n))});
 router.post("/",async(req,res)=>{
  const b=req.body || {};
@@ -65,7 +69,7 @@ router.delete("/:id",async(req,res)=>{const nodes=await readJSON(file)||[];const
  router.post("/:id/reconnect",async(req,res)=>{try{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});if(n.disabled)return res.status(409).json({error:"Node is disabled"});const connection=nodeConnection(n);const health:any=await nodeControl.health(connection);n.lastHeartbeat=new Date().toISOString();n.lastStats=health;n.error=null;await writeJSON(file,nodes);await audit("node.reconnected",req,{nodeId:n.id});res.json({success:true,status:nodeStatus(n),health,endpoint:connection.baseUrl})}catch(e:any){res.status(Number(e?.statusCode||502)).json({success:false,error:e.message||"Node reconnect failed",nodeUnavailable:e?.nodeUnavailable===true,timeout:e?.timeout===true,hint:"Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall."})}});
  router.post("/:id/restart",async(req,res)=>{try{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});if(n.disabled)return res.status(409).json({error:"Node is disabled"});const connection=nodeConnection(n);const result:any=await nodeControl.restartDaemon(connection);n.lastHeartbeat=null;n.lastStats=null;n.error=null;n.restartingAt=new Date().toISOString();await writeJSON(file,nodes);await audit("node.restart_requested",req,{nodeId:n.id});res.status(202).json({success:true,restarting:true,message:result?.message||"Node daemon restart accepted",status:"RESTARTING"})}catch(e:any){res.status(Number(e?.statusCode||503)).json({success:false,error:e.message||"Node daemon restart failed",nodeUnavailable:e?.nodeUnavailable===true,timeout:e?.timeout===true,hint:"Verify the node FQDN, Cloudflare Tunnel or Zero Trust ingress, TLS mode, daemon port, and firewall."})}});
 router.get("/:id/stats",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});if(n.disabled)return res.status(409).json({error:"Node disabled"});res.json({...n.lastStats,status:nodeStatus(n),lastHeartbeat:n.lastHeartbeat||null,heartbeatAgeMs:n.lastHeartbeat&&Number.isFinite(Date.parse(n.lastHeartbeat))?Math.max(0,Date.now()-Date.parse(n.lastHeartbeat)):null});});
-router.get("/:id/health",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const checks:any={cloudflare:{status:"not_checked"},dns:{status:"not_checked"},node:{status:"offline"},docker:{status:"unknown"},system:{status:"unknown"}};try{
+router.get("/:id/health",async(req,res)=>{const nodes=await readJSON(file)||[];const n=nodes.find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});const checks:any={cloudflare:{status:"not_checked"},dns:{status:"not_checked"},node:{status:"offline"},docker:{status:"unknown"},system:{status:"unknown"}};if(n.isLocal){try{const runtime=await localDockerCheck(n);n.localReady=true;n.lastHeartbeat=new Date().toISOString();n.lastStats=runtime;n.error=null;await writeJSON(file,nodes);return res.json({...checks,node:{status:"ok",endpoint:{protocol:"local",hostname:"127.0.0.1",port:n.apiPort}},docker:{status:"ok",ready:true},system:runtime.system});}catch(e:any){n.localReady=false;n.error=String(e?.message||e);await writeJSON(file,nodes);return res.json({...checks,node:{status:"error",error:n.error},docker:{status:"error",error:n.error},system:{status:"error"}})}}try{
  const connection=nodeConnection(n); const {url,hostname,port}=nodeUrlParts(connection.baseUrl); const resolved=await dns.lookup(hostname); checks.dns={status:"ok",address:resolved.address};
  if(url.protocol === "https:"){await new Promise((resolve,reject)=>{const socket=tls.connect({host:hostname,port,servername:hostname,rejectUnauthorized:true},()=>{socket.end();resolve(true)});socket.on("error",reject);setTimeout(()=>{socket.destroy();reject(new Error("TLS timeout"))},5000)});checks.node.tls="valid"}
  const started=Date.now();const h=await nodeControl.health(connection);checks.node={status:"ok",latencyMs:Date.now()-started,tls:checks.node.tls,endpoint:{protocol:url.protocol.replace(":",""),hostname,port},...h};checks.docker=h.docker;checks.system=h.system;
