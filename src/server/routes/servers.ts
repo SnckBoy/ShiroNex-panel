@@ -1,7 +1,8 @@
 import express from "express";
 import path from "path";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, changeJavaVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, unzipFile, zipFiles, installPlugin, installMod, importModpack, updateResources, updateSuspend , createFile, createDirectory, downloadFile, installModpackFromMarketplace, listInstalledPlugins, removeInstalledPlugin} from "../controllers/servers.js";
+import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, changeJavaVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, unzipFile, zipFiles, installPlugin, installMod, importModpack, updateResources, updateSuspend , createFile, createDirectory, downloadFile, installModpackFromMarketplace, listInstalledPlugins, removeInstalledPlugin } from "../controllers/servers.js";
+import { getContainerLogs } from "../services/docker.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -27,6 +28,16 @@ router.get("/", getServers);
 router.post("/", createServer);
 router.get("/:id", getServer);
 router.get("/:id/stats", getServerStats);
+router.get("/:id/logs", async (req: any, res: any) => {
+  try {
+    const server = req.server;
+    if (!server?.containerId) return res.json({ logs: "", available: false });
+    const logs = await getContainerLogs(server.containerId, server.nodeId);
+    res.json({ logs, available: true });
+  } catch (error: any) {
+    res.status(503).json({ error: error?.message || "Console logs are temporarily unavailable", logs: "", available: false });
+  }
+});
 router.delete("/:id", deleteServer);
 router.put("/:id/owner", updateOwner);
 router.put("/:id/ipalias", updateIpAlias);

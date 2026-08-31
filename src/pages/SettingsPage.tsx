@@ -304,6 +304,14 @@ export default function SettingsPage(): React.ReactElement {
       fetchUsers();
     } catch (e) {}
   };
+  const changeUserRole = async (id: string, nextRole: string) => {
+    try {
+      await axios.put(`/api/system/users/${id}/role`, { role: nextRole });
+      await fetchUsers();
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Error changing user role");
+    }
+  };
 
 
   
@@ -983,7 +991,7 @@ export default function SettingsPage(): React.ReactElement {
       )}
 
       {isAdmin && (
-        <AdminControls user={user} users={users} username={username} setUsername={setUsername} password={password} setPassword={setPassword} role={role} setRole={setRole} isCreatingUser={isCreatingUser} createUser={createUser} editingUserId={editingUserId} setEditingUserId={setEditingUserId} adminUserNewPassword={adminUserNewPassword} setAdminUserNewPassword={setAdminUserNewPassword} changeUserPassword={changeUserPassword} deleteUser={deleteUser} />
+        <AdminControls user={user} users={users} username={username} setUsername={setUsername} password={password} setPassword={setPassword} role={role} setRole={setRole} isCreatingUser={isCreatingUser} createUser={createUser} editingUserId={editingUserId} setEditingUserId={setEditingUserId} adminUserNewPassword={adminUserNewPassword} setAdminUserNewPassword={setAdminUserNewPassword} changeUserPassword={changeUserPassword} changeUserRole={changeUserRole} deleteUser={deleteUser} />
       )}
 
       {isAdmin && (

@@ -7,6 +7,7 @@ import "./Login.css";
 
 export default function Register() {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -43,7 +44,7 @@ export default function Register() {
 
     setIsLoading(true);
     try {
-      await axios.post("/api/auth/register", { username: cleanUsername, password, confirmPassword }, { timeout: 15000 });
+      await axios.post("/api/auth/register", { username: cleanUsername, email: email.trim(), password, confirmPassword }, { timeout: 15000 });
       setSuccess("Account created successfully. Redirecting to sign in…");
       window.setTimeout(() => navigate("/login", { replace: true }), 1100);
     } catch (err: any) {
@@ -118,7 +119,7 @@ export default function Register() {
               <span>Email <em>(optional)</em></span>
               <div className="login-input-wrap">
                 <Mail className="login-field-icon" size={18} />
-                <input type="email" name="email" autoComplete="email" placeholder="you@example.com" disabled aria-disabled="true" />
+                <input type="email" name="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} />
               </div>
             </label>
 

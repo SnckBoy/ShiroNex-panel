@@ -109,7 +109,7 @@ router.get("/users", async (req, res) => {
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const users = await readJSON("users.json") || [];
   // never return passwords
-  res.json(users.map((u: any) => ({ id: u.id, username: u.username, role: u.role || 'admin', isGoogleUser: !!u.googleId, createdAt: u.createdAt })));
+  res.json(users.map((u: any) => ({ id: u.id, username: u.username, email: u.email || "", role: u.role || 'admin', isGoogleUser: !!u.googleId, createdAt: u.createdAt })));
 });
 
 router.post("/users", async (req, res) => {
@@ -137,6 +137,21 @@ router.post("/users", async (req, res) => {
 
   await writeJSON("users.json", users);
   res.json({ success: true, id: newUserId, username: cleanUsername, role });
+});
+
+router.put("/users/:id/role", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "owner") return res.status(403).json({ error: "Only the Owner can change user roles" });
+  const requestedRole = String(req.body?.role || "").toLowerCase();
+  if (requestedRole !== "user" && requestedRole !== "admin") return res.status(400).json({ error: "Role must be user or admin" });
+  if (req.params.id === user.id) return res.status(400).json({ error: "The Owner account cannot be demoted" });
+  const users = await readJSON("users.json") || [];
+  const targetIndex = users.findIndex((candidate: any) => candidate.id === req.params.id);
+  if (targetIndex === -1) return res.status(404).json({ error: "User not found" });
+  if (users[targetIndex].role === "owner") return res.status(403).json({ error: "The Owner account cannot be changed" });
+  users[targetIndex].role = requestedRole;
+  await writeJSON("users.json", users);
+  res.json({ success: true, id: users[targetIndex].id, role: requestedRole });
 });
 
 router.delete("/users/:id", async (req, res) => {

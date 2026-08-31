@@ -17,6 +17,7 @@ interface AdminControlsProps {
   adminUserNewPassword: string;
   setAdminUserNewPassword: (v: string) => void;
   changeUserPassword: (id: string) => void;
+  changeUserRole: (id: string, role: string) => void;
   deleteUser: (id: string) => void;
 }
 
@@ -36,6 +37,7 @@ export default function AdminControls({
   adminUserNewPassword,
   setAdminUserNewPassword,
   changeUserPassword,
+  changeUserRole,
   deleteUser
 }: AdminControlsProps) {
   return (
@@ -90,6 +92,7 @@ export default function AdminControls({
               <thead className="bg-muted text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-semibold rounded-tl-xl">Username</th>
+                  <th className="px-4 py-3 font-semibold">Email</th>
                   <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold rounded-tr-xl text-right">Actions</th>
                 </tr>
@@ -101,7 +104,15 @@ export default function AdminControls({
                       {u.username}
                       {(u.role === 'admin' || u.role === 'owner') && <Shield size={14} className={u.role === 'owner' ? "text-amber-400" : "text-purple-400"} />}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground capitalize">{u.role}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{u.email || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground capitalize">
+                      {user?.role === "owner" && u.role !== "owner" ? (
+                        <select value={u.role || "user"} onChange={(e) => changeUserRole(u.id, e.target.value)} className="bg-muted border border-border rounded-lg px-2 py-1 text-xs text-foreground">
+                          <option value="user">User</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      ) : u.role}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       {editingUserId === u.id ? (
                         <div className="flex items-center justify-end gap-2">
@@ -132,7 +143,7 @@ export default function AdminControls({
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-muted-foreground text-sm">
+                    <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground text-sm">
                       No users found.
                     </td>
                   </tr>

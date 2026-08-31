@@ -264,6 +264,23 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
   useEffect(() => {
     let mounted = true;
+    const loadHistoricalLogs = async () => {
+      try {
+        const response = await axios.get(`/api/servers/${serverId}/logs`);
+        const text = typeof response.data?.logs === "string" ? response.data.logs : "";
+        if (mounted && text.trim()) {
+          setLogs(text.split(/\r?\n/).filter((line: string) => line.trim()).slice(-MAX_LOG_LINES));
+        }
+      } catch {
+        // Live streaming can still connect when historical logs are unavailable.
+      }
+    };
+    void loadHistoricalLogs();
+    return () => { mounted = false; };
+  }, [serverId]);
+
+  useEffect(() => {
+    let mounted = true;
     const loadResources = async () => {
       try {
         const response = await axios.get(`/api/servers/${serverId}/stats`);

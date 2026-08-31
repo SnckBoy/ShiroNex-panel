@@ -81,7 +81,8 @@ export const register = async (req: Request, res: Response) => {
     return;
   }
 
-  const { username, password, confirmPassword } = req.body;
+  const { username, email, password, confirmPassword } = req.body;
+  const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
   if (!username || !password || !confirmPassword) {
     res.status(400).json({ error: "Username, password, and confirm password are required" });
@@ -91,6 +92,11 @@ export const register = async (req: Request, res: Response) => {
   const cleanUsername = username.trim();
   if (cleanUsername.length < 3) {
     res.status(400).json({ error: "Username must be at least 3 characters" });
+    return;
+  }
+
+  if (cleanEmail && !isValidEmail(cleanEmail)) {
+    res.status(400).json({ error: "Please enter a valid email address" });
     return;
   }
 
@@ -123,6 +129,7 @@ export const register = async (req: Request, res: Response) => {
     id: `user-${crypto.randomUUID()}`,
     username: cleanUsername,
     password: hashedPassword,
+    ...(cleanEmail ? { email: cleanEmail } : {}),
     role: "user",
     passwordVersion: 0
   };
