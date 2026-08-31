@@ -5,11 +5,6 @@ import {
   Check,
   Trash2,
   ChevronDown,
-  Move,
-  Minimize2,
-  Maximize2,
-  WrapText,
-  Type,
 
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
@@ -33,7 +28,7 @@ interface ServerConsoleProps {
 }
 
 type LogLevel = "info" | "warn" | "error";
-type LogFilter = "all" | LogLevel;
+type LogFilter = "important" | "all";
 
 /* ═══════════════════════════════════════════════════════
    CONSTANTS
@@ -44,19 +39,9 @@ const STATS_POLL_MS = 5000;
 const SPARK_CAP = 40;
 const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
-const QUICK_COMMANDS = [
-  { cmd: "list", label: "list" },
-  { cmd: "seed", label: "seed" },
-  { cmd: "save-all", label: "save-all" },
-  { cmd: "whitelist list", label: "whitelist" },
-  { cmd: "stop", label: "stop", danger: true },
-];
-
 const FILTERS: { key: LogFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "info", label: "Info" },
-  { key: "warn", label: "Warn" },
-  { key: "error", label: "Err" },
+  { key: "important", label: "Important Logs" },
+  { key: "all", label: "All Logs" },
 ];
 
 /* ═══════════════════════════════════════════════════════
@@ -144,9 +129,16 @@ const stripAnsi = (s: string) => s.replace(ANSI_RE, "");
 
 const levelOf = (raw: string): LogLevel => {
   const l = stripAnsi(raw);
-  if (/ERROR|Exception|FATAL/.test(l)) return "error";
-  if (l.includes("WARN")) return "warn";
+  if (/ERROR|Exception|FATAL/i.test(l)) return "error";
+  if (/WARN|Can't keep up|behind/i.test(l)) return "warn";
   return "info";
+};
+
+const isImportantLog = (raw: string) => {
+  const l = stripAnsi(raw);
+  if (/ERROR|Exception|FATAL|WARN|Can't keep up|behind/i.test(l)) return true;
+  if (/^>|\[System|joined the game|left the game|starting|started|stopping|stopped|ready|done|loading|loaded|world|plugin|mod|fabric|forge|velocity|paper/i.test(l)) return true;
+  return !/TPS|tick rate|heartbeat|debug|worker|thread|performance|resource|keep.?alive|network message|container stats|metrics/i.test(l);
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -236,7 +228,8 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   const [histIdx, setHistIdx] = useState(-1);
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(false);
-  const [filter, setFilter] = useState<LogFilter>("all");
+  const [filter, setFilter] = useState<LogFilter>("important");
+  const [search, setSearch] = useState("");
   const [atBottom, setAtBottom] = useState(true);
   const [copied, setCopied] = useState(false);
   const [isFloating, setIsFloating] = useState(false);
@@ -522,8 +515,8 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
     () =>
       logs
         .map((l, i) => ({ l, i }))
-        .filter(({ l }) => filter === "all" || levelOf(l) === filter),
-    [logs, filter]
+        .filter(({ l }) => (filter === "all" || isImportantLog(l)) && (!search.trim() || stripAnsi(l).toLowerCase().includes(search.trim().toLowerCase()))),
+    [logs, filter, search]
   );
 
   /* ═══════════════════════ RENDER ═══════════════════════ */
@@ -584,13 +577,17 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
                   <div className="flex items-center gap-1 ml-1 pl-1 border-l border-white/10">
                     <button type="button" className="qx-window-control" onClick={clearLogs} title="Clear console" aria-label="Clear console"><Trash2 size={12} /></button>
                     <button type="button" className="qx-window-control" onClick={() => void copyLogs()} title={copied ? "Copied" : "Copy logs"} aria-label={copied ? "Logs copied" : "Copy logs"}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
-                    <button type="button" className={`qx-window-control ${!wrapLines ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => setWrapLines((value) => !value)} title={wrapLines ? "Disable line wrapping" : "Enable line wrapping"} aria-label={wrapLines ? "Disable line wrapping" : "Enable line wrapping"}><WrapText size={12} /></button>
-                    <button type="button" className="qx-window-control hidden sm:inline-flex" onClick={() => setTerminalFontSize((value) => value === "normal" ? "large" : value === "large" ? "small" : "normal")} title="Change terminal text size" aria-label="Change terminal text size"><Type size={12} /></button>
-                    <button type="button" className={`qx-window-control ${isFloating ? "text-emerald-300 bg-emerald-400/10" : ""}`} onClick={() => { setIsFloating((value) => !value); setWindowOffset({ x: 0, y: 0 }); }} title={isFloating ? "Dock console" : "Float console"} aria-label={isFloating ? "Dock console" : "Float console"}><Move size={12} /></button>
-                    <button type="button" className="qx-window-control" onClick={() => setIsMinimized((value) => !value)} title={isMinimized ? "Restore console" : "Minimize console"} aria-label={isMinimized ? "Restore console" : "Minimize console"}>{isMinimized ? <Maximize2 size={12} /> : <Minimize2 size={12} />}</button>
+
                   </div>
                 </div>
               </header>
+
+              <div className="flex flex-wrap items-center gap-2 border-y border-white/[0.06] bg-[#111116] px-3 py-2">
+                <div className="flex items-center gap-1 rounded-lg border border-white/[0.07] bg-black/20 p-0.5">
+                  {FILTERS.map((item) => <button key={item.key} type="button" onClick={() => setFilter(item.key)} className={`rounded-md px-2.5 py-1 text-[10px] font-medium transition-colors ${filter === item.key ? "bg-indigo-500/15 text-indigo-200" : "text-slate-500 hover:text-slate-300"}`}>{item.label}</button>)}
+                </div>
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search logs" aria-label="Search logs" className="ml-auto min-w-[150px] flex-1 rounded-md border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400/40 sm:flex-none" />
+              </div>
 
               {/* ── Log body ── */}
               <div
@@ -629,7 +626,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
                 {visible.map(({ l, i }) => (
                   <div
-                    key={i}
+                    key={`${i}-${l}`}
                     className="qx-log-line flex items-start py-[2px] sm:py-[3px] px-1 sm:px-2 -mx-1 sm:-mx-2 rounded-sm hover:bg-muted transition-colors duration-150 group"
                     style={{ animationDelay: `${Math.min(i * 10, 200)}ms` }}
                   >
@@ -664,33 +661,6 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
                   Tail
                 </button>
               )}
-
-              {/* ── Quick commands ── */}
-              <div className="snx-quick-command-bar qx-console-quick px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10">
-                <span className="qx-display text-[8px] font-bold uppercase tracking-[0.22em] text-slate-500 shrink-0 mr-0.5 hidden xs:inline">
-                  Quick
-                </span>
-                {QUICK_COMMANDS.map((q) => (
-                  <button
-                    key={q.cmd}
-                    type="button"
-                    onClick={() => {
-                      setCommand(q.cmd);
-                      inputRef.current?.focus();
-                    }}
-                    className={`qx-mono text-[10px] px-2.5 py-1 rounded-lg border whitespace-nowrap transition-all duration-200 shrink-0 ${
-                      q.danger
-                        ? "text-rose-400/90 border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20"
-                        : "text-slate-300 border-border/80 bg-muted/60 hover:border-emerald-400/40 hover:bg-emerald-400/[0.08]"
-                    }`}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-                <span className="qx-mono text-[9px] text-slate-600 ml-auto shrink-0 hidden md:block">
-                  press <kbd className="text-slate-500 border border-border rounded-sm px-1">/</kbd> to focus
-                </span>
-              </div>
 
               {/* ── Command bar ── */}
               <form
