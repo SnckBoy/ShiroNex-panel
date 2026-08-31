@@ -50,21 +50,33 @@ router.post("/", async (req: Request, res: Response) => {
 
   const isPrimary = Boolean(req.body?.primary);
   if (isPrimary) for (const allocation of allocations) if (allocation.nodeId === String(nodeId)) allocation.primary = false;
-  const item = {
-    id: crypto.randomUUID(),
+  const createdAt = new Date().toISOString();
+  const created = [];
+  for (let port = start; port <= end; port += 1) {
+    created.push({
+      id: crypto.randomUUID(),
+      nodeId: String(nodeId),
+      ip,
+      ipVersion,
+      portStart: port,
+      portEnd: port,
+      assignedServerId: null,
+      // A range creates independent ports; only the first can be primary.
+      primary: isPrimary && port === start,
+      createdAt,
+    });
+  }
+  allocations.push(...created);
+  await writeJSON(file, allocations);
+  await audit("allocation.created", req, {
+    allocationIds: created.map((item: any) => item.id),
     nodeId: String(nodeId),
     ip,
-    ipVersion,
     portStart: start,
     portEnd: end,
-    assignedServerId: null,
-    primary: isPrimary,
-    createdAt: new Date().toISOString(),
-  };
-  allocations.push(item);
-  await writeJSON(file, allocations);
-  await audit("allocation.created", req, { allocationId: item.id, nodeId: item.nodeId, ip: item.ip, portStart: start, portEnd: end });
-  return res.status(201).json(item);
+    count: created.length,
+  });
+  return res.status(201).json({ allocations: created, count: created.length });
 });
 
 router.post("/:id/primary", async (req: Request, res: Response) => {
