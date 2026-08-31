@@ -55,6 +55,22 @@ export const nodeRequest = async <T=any>(node: NodeRecord, method: string, path:
   }
 };
 
+const normalizeRelativePath = (value: unknown, fallback = ".") => {
+  const normalized = String(value ?? fallback).replace(/^[/\\\\]+/, "");
+  return normalized || fallback;
+};
+
+const normalizeFilePayload = (payload: any) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const next = { ...payload };
+  if ("path" in next) next.path = normalizeRelativePath(next.path);
+  if (Array.isArray(next.paths)) next.paths = next.paths.map((value: unknown) => normalizeRelativePath(value));
+  if ("oldPath" in next) next.oldPath = normalizeRelativePath(next.oldPath);
+  if ("newPath" in next) next.newPath = normalizeRelativePath(next.newPath);
+  if (Array.isArray(next.files)) next.files = next.files.map((file: any) => ({ ...file, path: normalizeRelativePath(file?.path, "") }));
+  return next;
+};
+
 const requireHealthResponse = async (node: NodeRecord) => {
   const response: any = await nodeRequest(node, "GET", "/v1/health", undefined, healthTimeout);
   if (!response || typeof response !== "object" || response.ok !== true) {
@@ -81,7 +97,7 @@ export const nodeControl = {
   statsServer: (n:NodeRecord,id:string) => nodeRequest(n,"GET",`/v1/servers/${id}/stats`,undefined,15000),
   logs: (n:NodeRecord,id:string) => nodeRequest(n,"GET",`/v1/servers/${id}/logs`,undefined,15000),
   command: (n:NodeRecord,id:string,command:string) => nodeRequest(n,"POST",`/v1/servers/${id}/command`,{command},30000),
-  files: (n:NodeRecord,id:string,op:string,d:any) => nodeRequest(n,"POST",`/v1/servers/${id}/files/${op}`,d,60000),
-  writeBase64: (n:NodeRecord,id:string,path:string,content:string) => nodeRequest(n,"POST",`/v1/servers/${id}/files/write-base64`,{path,content},120000),
-  replaceBatch: (n:NodeRecord,id:string,files:Array<{path:string;content:string}>,confirmReplace=false) => nodeRequest(n,"POST",`/v1/servers/${id}/files/replace-batch`,{files,confirmReplace},120000)
+  files: (n:NodeRecord,id:string,op:string,d:any) => nodeRequest(n,"POST",`/v1/servers/${id}/files/${op}`,normalizeFilePayload(d),60000),
+  writeBase64: (n:NodeRecord,id:string,path:string,content:string) => nodeRequest(n,"POST",`/v1/servers/${id}/files/write-base64`,{path:normalizeRelativePath(path),content},120000),
+  replaceBatch: (n:NodeRecord,id:string,files:Array<{path:string;content:string}>,confirmReplace=false) => nodeRequest(n,"POST",`/v1/servers/${id}/files/replace-batch`,{files:files.map((file)=>({...file,path:normalizeRelativePath(file.path,"" )})),confirmReplace},120000)
 };
