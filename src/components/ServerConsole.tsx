@@ -25,6 +25,8 @@ interface ServerConsoleProps {
   serverId: string;
   server?: {
     version?: string;
+    name?: string;
+    status?: string;
     [key: string]: unknown;
   };
   actionNotice?: { tone: "info" | "success" | "error"; text: string } | null;
@@ -250,6 +252,9 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   const inputRef = useRef<HTMLInputElement>(null);
   const sockRef = useRef<Socket | null>(null);
   const { token } = useAuth();
+  const serverStatus = String(server?.status || "unknown").toLowerCase();
+  const serverOffline = ["offline", "stopped", "unknown"].includes(serverStatus);
+  const statusLabel = serverStatus === "running" || serverStatus === "online" ? "Online" : serverStatus === "starting" ? "Starting" : serverStatus === "stopping" ? "Stopping" : "Offline";
 
   useEffect(() => {
     const t = setTimeout(() => setReady(true), 60);
@@ -529,7 +534,17 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
         <div className="relative flex flex-col xl:flex-row w-full max-w-[1440px] mx-auto min-h-full gap-3 md:gap-5 p-3 md:p-6 pb-20 md:pb-10">
           
           {/* ═══════════ DEDICATED CONSOLE AREA ═══════════ */}
-          <div className="flex flex-1 flex-col gap-4 w-full">
+          <div className="flex flex-1 flex-col gap-4 w-full xl:w-[76%] min-w-0">
+            <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-black/25 px-4 py-3 md:px-5">
+              <div className="min-w-0">
+                <p className="qx-display text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Server console</p>
+                <h1 className="mt-1 truncate text-base font-semibold text-slate-100">{server?.name || `Server ${serverId}`}</h1>
+              </div>
+              <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${statusLabel === "Online" ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : statusLabel === "Starting" || statusLabel === "Stopping" ? "border-amber-400/25 bg-amber-400/10 text-amber-200" : "border-slate-400/20 bg-slate-400/10 text-slate-300"}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${statusLabel === "Online" ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,.8)]" : statusLabel === "Starting" || statusLabel === "Stopping" ? "bg-amber-400" : "bg-slate-500"}`} />
+                {statusLabel}
+              </span>
+            </header>
             <section
               className={`snx-console-window flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
                 ready ? "qx-enter-right" : "opacity-0"
@@ -708,16 +723,19 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
                 <button
                   type="submit"
-                  disabled={!command.trim()}
-                  className="snx-execute-button qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
+                                      disabled={!command.trim() || serverOffline}
+                    title={serverOffline ? "Start the server before sending commands" : "Execute command"}
+                    className="snx-execute-button qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
                 >
                   Execute
                 </button>
               </form>
+              {serverOffline && <p className="px-3 pb-3 text-[11px] text-amber-200/70">The server is offline. Start it before sending console commands.</p>}
             </section>
-            <ResourceStatus snapshot={resourceSnapshot} />
-
           </div>
+          <aside className="w-full xl:w-[24%] xl:sticky xl:top-6 xl:self-start">
+            <ResourceStatus snapshot={resourceSnapshot} />
+          </aside>
         </div>
       </div>
     </>
