@@ -659,7 +659,14 @@ export const getFiles = async (req: Request, res: Response) => {
   const { id } = req.params;
   const servers=await readJSON("servers.json")||[]; const server=servers.find((x:any)=>x.id===id); const remote=await remoteForServer(server);
   const dirPath = req.query.path ? String(req.query.path) : "/";
-  if(remote){ try { const data=await nodeControl.files(remote,id,"list",{path:dirPath}); return res.json(data); } catch(e:any){ return res.status(502).json({error:e.message}); } }
+  if(remote){
+    try {
+      const relativePath = dirPath.replace(/^[/\\\\]+/, "") || ".";
+      const isFileRequest = relativePath !== "." && !relativePath.endsWith("/") && Boolean(relativePath.split("/").pop()?.includes("."));
+      const data = await nodeControl.files(remote, id, isFileRequest ? "read" : "list", { path: relativePath });
+      return res.json(data);
+    } catch(e:any){ return res.status(502).json({error:e.message}); }
+  }
   await ensureLocalWorkspaceFiles(server);
   const targetPath = path.join(process.cwd(), ".data", "servers", id, dirPath);
   
