@@ -49,77 +49,29 @@ const FILTERS: { key: LogFilter; label: string }[] = [
 ═══════════════════════════════════════════════════════ */
 
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
-
-::selection { background: rgba(52,211,153,0.25); }
-
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+::selection { background: rgba(99,102,241,.25); }
 .qx-display { font-family: 'Inter', system-ui, sans-serif; }
-.qx-mono    { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
-
-@keyframes qx-fade-up    { from { opacity:0; transform:translateY(14px) scale(.985); } to { opacity:1; transform:none; } }
-@keyframes qx-slide-left { from { opacity:0; transform:translateX(-26px); }            to { opacity:1; transform:none; } }
-@keyframes qx-slide-right{ from { opacity:0; transform:translateX(26px); }             to { opacity:1; transform:none; } }
-@keyframes qx-log-in     { from { opacity:0; transform:translateX(-7px); }             to { opacity:1; transform:none; } }
-@keyframes qx-ping       { 0% { transform:scale(1); opacity:.7; } 75%,100% { transform:scale(2.4); opacity:0; } }
-@keyframes qx-blink      { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
-@keyframes qx-spin       { to { transform:rotate(360deg); } }
-@keyframes qx-scan       { 0% { top:-2px; } 100% { top:100%; } }
-@keyframes qx-drift      { from { opacity: .9; } to { opacity: .9; } }
-@keyframes qx-border-run { from { opacity: 1; } to { opacity: 1; } }
-@keyframes qx-dot-bounce { 0%,80%,100% { transform:scale(.5); opacity:.3; } 40% { transform:scale(1); opacity:1; } }
-@keyframes qx-tail-in    { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
-@keyframes qx-shimmer    { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
-@keyframes qx-rec        { 0%,100% { opacity:1; } 50% { opacity:.35; } }
-
-.qx-enter        { animation: qx-fade-up .55s cubic-bezier(.22,1,.36,1) both; }
-.qx-enter-left   { animation: qx-slide-left .6s cubic-bezier(.22,1,.36,1) both; }
-.qx-enter-right  { animation: qx-slide-right .6s cubic-bezier(.22,1,.36,1) both; }
-.qx-log-line     { animation: qx-log-in .22s cubic-bezier(.22,1,.36,1) both; }
-.qx-tail-in      { animation: qx-tail-in .25s cubic-bezier(.22,1,.36,1) both; }
-
-.qx-panel {
-  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(24px); box-shadow: 0 0 40px -15px rgba(0,0,0,0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px;
-}
-
-.qx-grid-bg { background: transparent; animation: none; }
-
-.qx-spin-slow {
-  transform-box: view-box;
-  transform-origin: center;
-  animation: qx-spin 26s linear infinite;
-}
-
-.qx-arc { transition: stroke-dashoffset 1.1s cubic-bezier(.22,1,.36,1); }
-
-.qx-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-.qx-scroll::-webkit-scrollbar-track { background: transparent; }
-.qx-scroll::-webkit-scrollbar-thumb { background: rgba(52,211,153,.18); border-radius: 99px; }
-.qx-scroll::-webkit-scrollbar-thumb:hover { background: rgba(52,211,153,.38); }
-
-.qx-run { position: relative; overflow: hidden; transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease; }
-.qx-run::before { display: none; }
-.qx-run:active { transform: scale(.975); }
-.qx-chamfer { clip-path: none; }
-
-.qx-input-shell:focus-within {
-  border-color: rgba(52,211,153,.45);
-  box-shadow: 0 0 0 1px rgba(52,211,153,.12), 0 0 26px -6px rgba(52,211,153,.28), inset 0 0 14px -8px rgba(52,211,153,.15);
-}
-
-.qx-telemetry-row { transition: background .25s ease; }
-  .qx-telemetry-row:hover { background: rgba(255,255,255,.02); }
-
-  .qx-console-floating { left: 50%; top: 50%; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); border-radius: 14px !important; border-color: rgba(52,211,153,.34) !important; box-shadow: 0 28px 90px rgba(0,0,0,.62), 0 0 0 1px rgba(52,211,153,.08) !important; }
-  .qx-console-minimized { height: auto !important; min-height: 0 !important; }
-  .qx-console-minimized .qx-console-body, .qx-console-minimized .qx-console-quick, .qx-console-minimized .qx-console-command { display: none !important; }
-  .qx-window-control { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: rgba(203,213,225,.68); background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); transition: color .15s ease, background .15s ease, border-color .15s ease, transform .15s ease; touch-action: manipulation; }
-  .qx-window-control:hover { color: #d1fae5; background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.3); }
-  .qx-window-control:active { transform: scale(.94); }
-  .qx-window-control:focus-visible { outline: 2px solid rgba(52,211,153,.8); outline-offset: 2px; }
-  .qx-console-minimized .qx-window-drag-handle { cursor: grab; }
-  @media (max-width: 640px) { .qx-console-floating { max-width: calc(100vw - 12px); max-height: calc(100svh - 12px); } .qx-window-control { width: 27px; height: 27px; } }
-`;
+.qx-mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
+@keyframes qx-tail-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes qx-ping { 0% { transform: scale(1); opacity: .5; } 75%,100% { transform: scale(2); opacity: 0; } }
+@keyframes qx-blink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
+.qx-enter-right, .qx-log-line { animation: none; }
+.qx-tail-in { animation: qx-tail-in .18s ease both; }
+.qx-panel { background: #111116; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; box-shadow: none; }
+.qx-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.qx-scroll::-webkit-scrollbar-track { background: #09090b; }
+.qx-scroll::-webkit-scrollbar-thumb { background: #2a2a31; border-radius: 4px; }
+.qx-scroll::-webkit-scrollbar-thumb:hover { background: #3b3b45; }
+.qx-run { transition: color .15s ease, background .15s ease, border-color .15s ease; }
+.qx-input-shell:focus-within { border-color: rgba(99,102,241,.65); box-shadow: 0 0 0 1px rgba(99,102,241,.18); }
+.qx-telemetry-row { transition: background .15s ease; }
+.qx-telemetry-row:hover { background: rgba(255,255,255,.025); }
+.qx-console-floating { left: 50%; top: 50%; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); border-radius: 10px !important; }
+.qx-console-minimized { height: auto !important; min-height: 0 !important; }
+.qx-console-minimized .qx-console-body, .qx-console-minimized .qx-console-command { display: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+`
 
 /* ═══════════════════════════════════════════════════════
    HELPERS
@@ -208,7 +160,7 @@ function Clock() {
 ═══════════════════════════════════════════════════════ */
 
 function ResourceMetric({ label, value, detail, percent, tone }: { label: string; value: string; detail: string; percent: number | null; tone: string }) {
-  return <article className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"><div className="mb-3 flex items-start justify-between gap-3"><div><p className="qx-display text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p><p className="qx-mono mt-1 text-lg font-semibold text-slate-100">{value}</p></div><span className="mt-1 h-2 w-2 rounded-full" style={{ backgroundColor: tone, boxShadow: `0 0 12px ${tone}` }} /></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full transition-[width] duration-500" style={{ width: percent === null ? "0%" : `${Math.max(0, Math.min(100, percent))}%`, background: `linear-gradient(90deg, ${tone}55, ${tone})` }} /></div><p className="mt-2 text-[11px] text-slate-500">{detail}</p></article>;
+  return <div className="border-b border-white/[0.07] py-3 last:border-b-0"><div className="mb-1.5 flex items-baseline justify-between gap-3"><p className="qx-display text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p><p className="qx-mono text-xs font-medium text-slate-200">{value}</p></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]"><div className="h-full rounded-full transition-[width] duration-500" style={{ width: percent === null ? "0%" : `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: tone }} /></div><p className="mt-1.5 text-[10px] text-slate-500">{detail}</p></div>;
 }
 
 function ResourceStatus({ snapshot }: { snapshot: ReturnType<typeof normalizeTelemetry> }) {
@@ -218,7 +170,7 @@ function ResourceStatus({ snapshot }: { snapshot: ReturnType<typeof normalizeTel
   const memoryDetail = snapshot.memory.limitBytes === null ? "No memory limit reported" : `${memoryValue} of ${formatBytes(snapshot.memory.limitBytes)} used`;
   const diskValue = formatBytes(snapshot.disk.usedBytes);
   const diskDetail = snapshot.disk.limitBytes === null ? "No disk limit reported" : `${diskValue} of ${formatBytes(snapshot.disk.limitBytes)} used`;
-  return <section className="qx-panel rounded-2xl border border-white/10 p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="snx-eyebrow"><XTerm className="h-3.5 w-3.5" /> Resource status</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Node usage</h2></div><span className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${live ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-200"}`}>{statusLabel}</span></div><div className="grid gap-3 sm:grid-cols-3"><ResourceMetric label="CPU usage" value={formatCpu(snapshot.cpu.usagePercent)} detail={snapshot.cpu.capacityPercent === null ? "Live CPU utilization" : `Capacity ${formatPercent(snapshot.cpu.capacityPercent)}`} percent={snapshot.cpu.visualPercent} tone="#34d399" /><ResourceMetric label="Memory" value={memoryValue} detail={memoryDetail} percent={snapshot.memory.visualPercent} tone="#60a5fa" /><ResourceMetric label="Disk" value={diskValue} detail={diskDetail} percent={snapshot.disk.visualPercent} tone="#fbbf24" /></div></section>;
+  return <section className="qx-panel p-4 sm:p-5"><div className="mb-3 flex items-center justify-between gap-3"><h2 className="qx-display text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Resource usage</h2><span className={`text-[10px] ${live ? "text-emerald-300" : "text-slate-500"}`}>{statusLabel}</span></div><ResourceMetric label="CPU" value={formatCpu(snapshot.cpu.usagePercent)} detail={snapshot.cpu.capacityPercent === null ? "Waiting for capacity" : `Capacity ${formatPercent(snapshot.cpu.capacityPercent)}`} percent={snapshot.cpu.visualPercent} tone="#818cf8" /><ResourceMetric label="RAM" value={memoryValue} detail={memoryDetail} percent={snapshot.memory.visualPercent} tone="#818cf8" /><ResourceMetric label="Disk" value={diskValue} detail={diskDetail} percent={snapshot.disk.visualPercent} tone="#818cf8" /><div className="pt-3"><div className="mb-2 flex items-center justify-between"><p className="qx-display text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Network</p><span className="text-[10px] text-slate-500">live totals</span></div><div className="flex justify-between gap-3 font-mono text-[11px] text-slate-300"><span>↓ {formatBytes(snapshot.network.downloadTotalBytes)}</span><span>↑ {formatBytes(snapshot.network.uploadTotalBytes)}</span></div></div></section>;
 }
 
 export default function ServerConsole({ serverId, server, actionNotice }: ServerConsoleProps) {
@@ -539,12 +491,12 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
               </span>
             </header>
             <section
-              className={`snx-console-window flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
+              className={`snx-console-window flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-xl overflow-hidden relative ${
                 ready ? "qx-enter-right" : "opacity-0"
               } ${isFloating ? "qx-console-floating fixed z-[60] w-[min(92vw,980px)]" : ""} ${isMinimized ? "qx-console-minimized" : ""}`}
               style={{
                 animationDelay: "80ms",
-                boxShadow: "0 0 40px -15px rgba(0,0,0,0.5)",
+                boxShadow: "none",
                 transform: isFloating ? `translate3d(calc(-50% + ${windowOffset.x}px), calc(-50% + ${windowOffset.y}px), 0)` : undefined,
               }}
             >
