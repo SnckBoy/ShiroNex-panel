@@ -99,5 +99,6 @@ export const nodeControl = {
   command: (n:NodeRecord,id:string,command:string) => nodeRequest(n,"POST",`/v1/servers/${id}/command`,{command},30000),
   files: (n:NodeRecord,id:string,op:string,d:any) => nodeRequest(n,"POST",`/v1/servers/${id}/files/${op}`,normalizeFilePayload(d),60000),
   writeBase64: (n:NodeRecord,id:string,path:string,content:string) => nodeRequest(n,"POST",`/v1/servers/${id}/files/write-base64`,{path:normalizeRelativePath(path),content},120000),
+  writeChunk: (n:NodeRecord,id:string,path:string,uploadId:string,offset:number,totalSize:number,content:string) => nodeRequest(n,"POST",`/v1/servers/${id}/files/write-chunk`,{path:normalizeRelativePath(path),uploadId,offset,totalSize,content},120000),
   replaceBatch: (n:NodeRecord,id:string,files:Array<{path:string;content:string}>,confirmReplace=false) => nodeRequest(n,"POST",`/v1/servers/${id}/files/replace-batch`,{files:files.map((file)=>({...file,path:normalizeRelativePath(file.path,"" )})),confirmReplace},120000)
 };

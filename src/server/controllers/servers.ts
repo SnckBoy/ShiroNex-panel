@@ -697,14 +697,53 @@ export const getFiles = async (req: Request, res: Response) => {
 
 export const uploadFile = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const dirPath = req.body.path || "/";
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, dirPath);
-  
-  if (req.file) {
+  const dirPath = String(req.body.path || "/");
+  const server = (await readJSON("servers.json") || []).find((x: any) => x.id === id);
+  const remote = await remoteForServer(server);
+  if (!req.file) return res.status(400).json({ error: "A file is required" });
+  try {
+    if (remote) {
+      const bytes = await fs.readFile(req.file.path);
+      const result = await nodeControl.writeBase64(remote, id, path.posix.join(dirPath, req.file.originalname), bytes.toString("base64"));
+      return res.json({ success: true, remote: true, ...result });
+    }
+    const targetPath = path.join(process.cwd(), ".data", "servers", id, dirPath);
+    if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) return res.status(403).json({ error: "Invalid path" });
     await fs.ensureDir(targetPath);
-    await fs.move(req.file.path, path.join(targetPath, req.file.originalname), { overwrite: true });
+    await fs.move(req.file.path, path.join(targetPath, path.basename(req.file.originalname)), { overwrite: true });
+    return res.json({ success: true });
+  } finally {
+    if (await fs.pathExists(req.file.path)) await fs.remove(req.file.path);
   }
-  res.json({ success: true });
+};
+
+export const uploadChunk = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const uploadId = String(req.body?.uploadId || "");
+  const relativePath = String(req.body?.filePath || "");
+  const offset = Number(req.body?.offset);
+  const totalSize = Number(req.body?.totalSize);
+  const content = String(req.body?.content || "");
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(uploadId) || !relativePath || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(totalSize) || totalSize < 0) return res.status(400).json({ error: "Invalid upload chunk metadata" });
+  const chunk = Buffer.from(content, "base64");
+  if (chunk.length === 0 || chunk.length > 8 * 1024 * 1024 || offset + chunk.length > totalSize) return res.status(400).json({ error: "Invalid upload chunk size" });
+  const server = (await readJSON("servers.json") || []).find((x: any) => x.id === id);
+  const remote = await remoteForServer(server);
+  try {
+    if (remote) return res.json(await nodeControl.writeChunk(remote, id, relativePath, uploadId, offset, totalSize, content));
+    const baseDir = path.resolve(process.cwd(), ".data", "servers", id);
+    const target = path.resolve(baseDir, relativePath);
+    if (!target.startsWith(baseDir + path.sep)) return res.status(403).json({ error: "Invalid path" });
+    const tempDir = path.join(process.cwd(), ".data", "temp", "uploads", id);
+    const temp = path.join(tempDir, `${uploadId}.part`);
+    await fs.ensureDir(tempDir);
+    const handle = await fs.open(temp, "a+");
+    try { await fs.write(handle, chunk, 0, chunk.length, offset); } finally { await fs.close(handle); }
+    const nextOffset = offset + chunk.length;
+    const complete = nextOffset === totalSize;
+    if (complete) { await fs.ensureDir(path.dirname(target)); await fs.move(temp, target, { overwrite: true }); }
+    return res.json({ success: true, offset: nextOffset, bytes: chunk.length, complete });
+  } catch (e: any) { return res.status(remote ? 502 : 500).json({ error: e.message }); }
 };
 
 export const deleteFile = async (req: Request, res: Response) => {
@@ -880,15 +919,18 @@ export const unzipFile = async (req: Request, res: Response) => {
 export const createFile = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { filePath } = req.body;
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
-  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const server = (await readJSON("servers.json") || []).find((x: any) => x.id === id);
+  const remote = await remoteForServer(server);
   try {
+    if (remote) return res.json(await nodeControl.files(remote, id, "write", { path: filePath, content: "" }));
+    const baseDir = path.join(process.cwd(), ".data", "servers", id);
+    const targetPath = path.join(baseDir, filePath);
+    if (!targetPath.startsWith(baseDir)) return res.status(403).json({ error: "Invalid path" });
+    await fs.ensureDir(path.dirname(targetPath));
     await fs.writeFile(targetPath, "", "utf-8");
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    return res.status(remote ? 502 : 500).json({ error: e.message });
   }
 };
 

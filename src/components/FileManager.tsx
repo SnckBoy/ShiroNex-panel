@@ -341,30 +341,41 @@ export default function FileManager({ serverId }: { serverId: string }) {
     }
   };
 
-  // File Upload
+  // File Upload: bounded, resumable chunks. The browser only reads one chunk at a time.
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
-    
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("path", path);
-
+    const chunkSize = 4 * 1024 * 1024;
+    const uploadId = crypto.randomUUID();
+    const filePath = `${path.endsWith("/") ? path : `${path}/`}${file.name}`;
+    let offset = 0;
     try {
       setUploadProgress(0);
-      await axios.post(`/api/servers/${serverId}/files/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(percentCompleted);
+      while (offset < file.size) {
+        const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+        const bytes = new Uint8Array(await chunk.arrayBuffer());
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        const content = btoa(binary);
+        let sent = false;
+        let lastError: any;
+        for (let attempt = 0; attempt < 3 && !sent; attempt += 1) {
+          try {
+            const response = await axios.post(`/api/servers/${serverId}/files/upload-chunk`, { uploadId, filePath, offset, totalSize: file.size, content });
+            offset = Number(response.data?.offset || offset + bytes.length);
+            sent = true;
+          } catch (error) {
+            lastError = error;
+            await new Promise((resolve) => window.setTimeout(resolve, 600 * (attempt + 1)));
           }
         }
-      });
+        if (!sent) throw lastError || new Error("Chunk upload failed");
+        setUploadProgress(Math.round((offset * 100) / Math.max(1, file.size)));
+      }
       showToast(`Uploaded '${file.name}'`, "success");
-      fetchFiles();
-    } catch (err) {
-      showToast("Upload failed", "error");
+      await fetchFiles();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || "Upload failed after retries", "error");
     } finally {
       setUploadProgress(null);
       e.target.value = "";
