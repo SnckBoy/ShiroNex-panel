@@ -737,7 +737,7 @@ export const uploadChunk = async (req: Request, res: Response) => {
     const tempDir = path.join(process.cwd(), ".data", "temp", "uploads", id);
     const temp = path.join(tempDir, `${uploadId}.part`);
     await fs.ensureDir(tempDir);
-    const handle = await fs.open(temp, "a+");
+    const handle = await fs.open(temp, (await fs.pathExists(temp)) ? "r+" : "w+");
     try { await fs.write(handle, chunk, 0, chunk.length, offset); } finally { await fs.close(handle); }
     const nextOffset = offset + chunk.length;
     const complete = nextOffset === totalSize;

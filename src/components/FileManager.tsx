@@ -346,7 +346,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
     const chunkSize = 4 * 1024 * 1024;
-    const uploadId = crypto.randomUUID();
+    const uploadId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
     const filePath = `${path.endsWith("/") ? path : `${path}/`}${file.name}`;
     let offset = 0;
     try {
