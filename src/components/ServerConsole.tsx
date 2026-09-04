@@ -207,6 +207,10 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   }, []);
 
   useEffect(() => {
+    lastActionNotice.current = "";
+  }, [serverId]);
+
+  useEffect(() => {
     if (!actionNotice?.text || actionNotice.text === lastActionNotice.current) return;
     lastActionNotice.current = actionNotice.text;
     setLogs((previous) => [...previous, `[System] ${actionNotice.text}`].slice(-MAX_LOG_LINES));
@@ -214,6 +218,8 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
   useEffect(() => {
     let mounted = true;
+    setLogs([]);
+    setAtBottom(true);
     const loadHistoricalLogs = async () => {
       try {
         const response = await axios.get(`/api/servers/${serverId}/logs`);
@@ -274,7 +280,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
     socket.on("disconnect", (r: string) => {
       setConnected(false);
-      setLogs((p) => [...p, `[System] Disconnected. (${r})`]);
+      setLogs((p) => [...p, `[System] Disconnected. (${r})`].slice(-MAX_LOG_LINES));
     });
 
     socket.on("clear_logs", () => {
@@ -283,7 +289,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
     socket.on("connect_error", (e: Error) => {
       setConnected(false);
-      setLogs((p) => [...p, `[System Error] ${e.message}`]);
+      setLogs((p) => [...p, `[System Error] ${e.message}`].slice(-MAX_LOG_LINES));
     });
 
     return () => {
