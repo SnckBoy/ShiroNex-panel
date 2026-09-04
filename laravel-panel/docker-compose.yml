@@ -1,0 +1,34 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /var/www/html
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/var/www/html
+    command: sh -lc "php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000"
+    ports:
+      - "8000:8000"
+
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE:-snck}
+      MARIADB_USER: ${DB_USERNAME:-snck}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-change-this-password}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-this-root-password}
+    volumes:
+      - snck_mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  snck_mariadb:
