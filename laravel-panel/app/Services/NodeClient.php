@@ -1,0 +1,43 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Node;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+
+class NodeClient
+{
+    public function health(Node $node): array
+    {
+        $response = $this->request($node)->post('/v1/health');
+        if ($response->failed()) {
+            throw new RuntimeException("Node health request failed with HTTP {$response->status()}");
+        }
+        return $response->json() ?: [];
+    }
+
+    public function request(Node $node): \Illuminate\Http\Client\PendingRequest
+    {
+        $scheme = $node->behind_proxy ? ($node->protocol ?: 'https') : ($node->protocol ?: 'http');
+        $host = $node->fqdn ?: $node->host;
+        if (!$host) throw new RuntimeException('Node has no host or FQDN configured');
+        $port = $node->behind_proxy ? $node->public_port : $node->daemon_port;
+        $base = rtrim("{$scheme}://{$host}:{$port}", '/');
+        $request = Http::baseUrl($base)
+            ->acceptJson()
+            ->timeout(30)
+            ->connectTimeout(10)
+            ->withHeaders(['User-Agent' => 'Snck-Laravel-Panel/1.0']);
+        if (!$node->tls_verify) $request->withOptions(['verify' => false]);
+        $credential = $node->credential_encrypted ? decrypt($node->credential_encrypted) : null;
+        if ($credential) $request->withToken($credential);
+        if ($node->access_client_id && $node->access_client_secret_encrypted) {
+            $request->withHeaders([
+                'CF-Access-Client-Id' => $node->access_client_id,
+                'CF-Access-Client-Secret' => decrypt($node->access_client_secret_encrypted),
+            ]);
+        }
+        return $request;
+    }
+}
