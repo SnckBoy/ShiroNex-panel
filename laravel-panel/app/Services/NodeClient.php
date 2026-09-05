@@ -17,6 +17,21 @@ class NodeClient
         return $response->json() ?: [];
     }
 
+    public function createServer(Node $node, array $payload): array
+    {
+        $response = $this->request($node)->post('/v1/servers', $payload);
+        if ($response->failed()) throw new RuntimeException("Node server creation failed with HTTP {$response->status()}");
+        return $response->json() ?: [];
+    }
+
+    public function serverAction(Node $node, string $serverId, string $action): array
+    {
+        if (!in_array($action, ['start', 'stop', 'restart', 'kill'], true)) throw new RuntimeException('Unsupported server action');
+        $response = $this->request($node)->post("/v1/servers/{$serverId}/{$action}");
+        if ($response->failed()) throw new RuntimeException("Node server {$action} failed with HTTP {$response->status()}");
+        return $response->json() ?: [];
+    }
+
     public function request(Node $node): \Illuminate\Http\Client\PendingRequest
     {
         $scheme = $node->behind_proxy ? ($node->protocol ?: 'https') : ($node->protocol ?: 'http');
