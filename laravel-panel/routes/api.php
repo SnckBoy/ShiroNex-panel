@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AllocationController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\NodeController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerFilesController;
@@ -32,4 +33,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/servers/{server}/command', [ServerFilesController::class, 'command']);
     Route::get('/servers/{server}/logs', [ServerFilesController::class, 'logs']);
     Route::get('/servers/{server}/stats', [ServerFilesController::class, 'stats']);
+
+    Route::get('/servers/{server}/backups', [BackupController::class, 'index']);
+    Route::post('/servers/{server}/backups', [BackupController::class, 'store']);
 });

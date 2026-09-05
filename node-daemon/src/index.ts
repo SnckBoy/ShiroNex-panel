@@ -5,6 +5,7 @@ import path from "path";
 import Docker from "dockerode";
 import crypto from "crypto";
 import https from "https";
+import archiver from "archiver";
 
 const cfgPath = process.env.SHIRONEX_CONFIG || "/etc/shironex-node/config.json";
 if (!fs.existsSync(cfgPath)) throw new Error(`Missing daemon config: ${cfgPath}`);
@@ -106,6 +107,7 @@ app.post("/v1/servers/:id/files/replace-batch",auth,async(req,res)=>{try{const b
 app.post("/v1/servers/:id/files/mkdir",auth,async(req,res)=>{try{fs.mkdirSync(safePath(req.params.id,req.body.path),{recursive:true});res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/v1/servers/:id/files/rename",auth,async(req,res)=>{try{fs.renameSync(safePath(req.params.id,req.body.oldPath),safePath(req.params.id,req.body.newPath));res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/v1/servers/:id/files/delete",auth,async(req,res)=>{try{for(const p of req.body.paths||[])fs.rmSync(safePath(req.params.id,p),{recursive:true,force:true});res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
+app.post("/v1/servers/:id/backups",auth,async(req,res)=>{try{const serverId=safeId(req.params.id);const source=safePath(serverId,".");const backupRoot=path.join(serversDir,".backups",serverId);fs.mkdirSync(backupRoot,{recursive:true,mode:0o750});const filename=`backup-${new Date().toISOString().replace(/[:.]/g,"-")}.tar.gz`;const target=path.join(backupRoot,filename);const output=fs.createWriteStream(target,{mode:0o640});const archive=archiver("tar",{gzip:true,zlib:{level:6}});const done=new Promise<void>((resolve,reject)=>{output.on("close",()=>resolve());output.on("error",reject);archive.on("error",reject)});archive.pipe(output);archive.directory(source,false);await archive.finalize();await done;const stat=fs.statSync(target);const checksum=crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex");res.json({success:true,filename,sizeBytes:stat.size,checksum})}catch(e:any){res.status(400).json({error:e.message})}});
 const heartbeat=async()=>{try{const s=await stats();const url=`${String(cfg.panelUrl).replace(/\/$/,"")}/api/node-agent/heartbeat`;const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json","authorization":`Bearer ${cfg.credential}`},body:JSON.stringify({nodeId:cfg.nodeId,stats:s})});if(!r.ok)console.error("Heartbeat failed",r.status)}catch(e:any){console.error("Heartbeat error",e.message)}};
 setInterval(heartbeat,Math.max(5000,Number(cfg.heartbeatIntervalMs||10000)));heartbeat();
 const port=Number(cfg.port||6768); if(cfg.tlsKey&&cfg.tlsCert) https.createServer({key:fs.readFileSync(cfg.tlsKey),cert:fs.readFileSync(cfg.tlsCert)},app).listen(port,"0.0.0.0",()=>console.log(`ShiroNex Node Daemon HTTPS listening on ${port}`)); else app.listen(port,"0.0.0.0",()=>console.log(`ShiroNex Node Daemon HTTP listening on ${port}; use TLS in production`));

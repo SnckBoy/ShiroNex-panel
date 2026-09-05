@@ -40,6 +40,11 @@ class NodeClient
         return $response->json() ?: [];
     }
 
+    public function createBackup(Node $node, string $serverId): array
+    {
+        return $this->serverRequest($node, $serverId, 'POST', 'backups');
+    }
+
     public function request(Node $node): \Illuminate\Http\Client\PendingRequest
     {
         $scheme = $node->behind_proxy ? ($node->protocol ?: 'https') : ($node->protocol ?: 'http');
