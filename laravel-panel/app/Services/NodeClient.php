@@ -32,6 +32,14 @@ class NodeClient
         return $response->json() ?: [];
     }
 
+    public function serverRequest(Node $node, string $serverId, string $method, string $operation, array $payload = []): array
+    {
+        $path = "/v1/servers/{$serverId}/{$operation}";
+        $response = $this->request($node)->send($method, $path, $method === 'GET' ? ['query' => $payload] : ['json' => $payload]);
+        if ($response->failed()) throw new RuntimeException("Node file request failed with HTTP {$response->status()}");
+        return $response->json() ?: [];
+    }
+
     public function request(Node $node): \Illuminate\Http\Client\PendingRequest
     {
         $scheme = $node->behind_proxy ? ($node->protocol ?: 'https') : ($node->protocol ?: 'http');
