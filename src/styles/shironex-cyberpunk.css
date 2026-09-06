@@ -616,3 +616,39 @@ a[data-disabled="true"], button:disabled { cursor: not-allowed; }
     box-shadow: 0 12px 28px rgba(0,0,0,.14), inset 0 1px rgba(255,255,255,.035) !important;
   }
 }
+
+/* Ptero-inspired Snck dashboard refinement. Keep data and actions unchanged; simplify surfaces. */
+.snx-dashboard-ambient,
+.snx-dashboard-grid,
+.snx-ambient-orb { display: none !important; }
+.snx-dashboard-shell,
+.dashboard-shell { background: var(--bg-background) !important; }
+.snx-dashboard-inner { max-width: 1480px; padding-top: 1.5rem; }
+.snx-dashboard-header::after { background: var(--border-border-subtle); opacity: 1; }
+.snx-metric-card,
+.snx-server-card,
+.snx-server-row,
+.snx-console-window {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-border-subtle) !important;
+  border-radius: .5rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08) !important;
+}
+.snx-metric-card:hover,
+.snx-server-card:hover,
+.snx-server-row:hover { transform: none !important; border-color: var(--border-border-strong) !important; box-shadow: 0 4px 14px rgba(15, 23, 42, .12) !important; }
+.snx-metric-card::before,
+.snx-server-card::before,
+.snx-server-row::before,
+.snx-console-window::before { display: none !important; }
+.snx-card-sheen { display: none !important; }
+.snx-status-pill { border-radius: 999px !important; box-shadow: none !important; font-weight: 600 !important; }
+.snx-server-address,
+.snx-server-type { border-color: var(--border-border-subtle) !important; background: var(--bg-muted-subtle) !important; }
+.snx-view-toggle,
+.snx-search-field { border-color: var(--border-border-subtle) !important; background: var(--bg-card) !important; box-shadow: none !important; }
+.snx-search-field input { background: transparent !important; }
+.snx-action-button,
+.snx-start-button,
+.snx-icon-button { box-shadow: none !important; }
+.snx-section-title { letter-spacing: -.01em; }
