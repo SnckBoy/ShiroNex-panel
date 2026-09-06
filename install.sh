@@ -355,7 +355,12 @@ install_panel() {
   check_os
   check_network
   install_base_dependencies
-  install_docker
+  # Native panel mode does not require Docker to serve the web UI. Docker is
+  # required for local-node and container operations, but an Ubuntu VPS may
+  # not have a usable systemd/Docker runtime during the initial install.
+  if ! install_docker; then
+    warn "Docker could not be started during panel installation. The panel will still be installed; start Docker before creating a local node."
+  fi
   [[ -d "$APP_DIR/.data" || -f "$APP_DIR/.env" ]] && backup
   bootstrap_source
   configure_panel
