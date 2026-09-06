@@ -616,3 +616,55 @@ html.reduce-motion .wallpaper-orb,
 html.reduce-motion .dashboard-ambient::before,
 html.reduce-motion .dashboard-ambient::after,
 html.reduce-motion .effect-animated-gradient { animation: none !important; }
+
+/* Ptero-style Snck shell: quiet surfaces, compact spacing, and predictable motion. */
+.snx-app-shell {
+  --snx-surface: var(--bg-card);
+  --snx-surface-muted: color-mix(in srgb, var(--bg-card) 88%, var(--bg-background));
+  --snx-accent: #6366f1;
+}
+.snx-app-sidebar {
+  background: var(--snx-surface);
+}
+.snx-global-topbar {
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .04);
+}
+.snx-app-shell .qx-glass,
+.snx-app-shell .snx-metric-card,
+.snx-app-shell .snx-server-card,
+.snx-app-shell .snx-server-row {
+  background: var(--snx-surface);
+  border-color: var(--border-border-subtle);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.snx-app-shell .qx-stat-card:hover {
+  transform: none;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, .10);
+}
+.snx-app-shell button,
+.snx-app-shell a,
+.snx-app-shell input,
+.snx-app-shell select,
+.snx-app-shell textarea {
+  transition-duration: 140ms;
+}
+.snx-app-shell button:focus-visible,
+.snx-app-shell a:focus-visible,
+.snx-app-shell input:focus-visible,
+.snx-app-shell select:focus-visible,
+.snx-app-shell textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--snx-accent) 70%, transparent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .snx-app-shell *,
+  .snx-app-shell *::before,
+  .snx-app-shell *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -35,7 +35,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`flex h-[100dvh] w-full bg-transparent text-foreground font-sans overflow-hidden selection:bg-indigo-500/30`}>
+    <div className={`snx-app-shell flex h-[100dvh] w-full bg-background text-foreground font-sans overflow-hidden selection:bg-indigo-500/30`}>
       {/* Mobile Sidebar Overlay */}
       {mobileOpen && (
         <div 
@@ -52,7 +52,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative bg-transparent">
         
         {/* Top Header */}
-        <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-[#080711]/75 backdrop-blur-2xl border-b border-white/10 relative z-10 flex-shrink-0">
+        <header className="snx-global-topbar h-16 flex items-center justify-between px-4 sm:px-6 bg-card/95 border-b border-border-subtle relative z-10 flex-shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 -ml-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
               <Menu size={20} />
@@ -72,8 +72,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </header>
         
         {/* Main Content */}
-        <main className={`flex-1 w-full h-full relative z-0 overflow-x-hidden overflow-y-auto pb-safe custom-scrollbar`}>
-          <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
+        <main className={`flex-1 w-full h-full relative z-0 overflow-x-hidden overflow-y-auto pb-safe custom-scrollbar bg-background`}>
+          <div className="p-4 sm:p-6 md:p-8 max-w-[1480px] mx-auto w-full">
             {children}
           </div>
         </main>

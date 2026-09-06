@@ -25,9 +25,9 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
   links.push({ name: "Settings", path: "/settings", icon: <Settings size={20} /> });
 
   return (
-    <div className={`h-full flex flex-col bg-[#070611]/80 backdrop-blur-2xl border-r border-white/10 transition-all duration-300 shironex-aurora z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+    <aside className={`snx-app-sidebar h-full flex flex-col bg-card border-r border-border-subtle transition-all duration-200 z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       {/* Header */}
-      <div className={`h-16 flex items-center border-b border-border-subtle ${isCollapsed ? 'justify-center' : 'px-6'} flex-shrink-0 relative`}>
+      <div className={`h-16 flex items-center border-b border-border-subtle ${isCollapsed ? 'justify-center' : 'px-5'} flex-shrink-0 relative`}>
         {onClose && (
           <button onClick={onClose} className="md:hidden flex items-center justify-center absolute top-5 right-4 p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
             <X size={20} />
@@ -37,7 +37,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
           {panelLogo ? (
             <img src={panelLogo} alt="Logo" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
           ) : (
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-fuchsia-500 via-violet-500 to-cyan-400 shadow-[0_0_22px_rgba(168,85,247,.25)] flex-shrink-0 text-white">
+            <div className="flex items-center justify-center w-8 h-8 rounded-md bg-indigo-600 flex-shrink-0 text-white">
               <Server className="w-4 h-4" />
             </div>
           )}
@@ -46,7 +46,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
               initial={{ opacity: 0, width: 0 }}
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
-              className="text-lg font-black tracking-tight truncate whitespace-nowrap shironex-gradient-text"
+              className="text-lg font-bold tracking-tight truncate whitespace-nowrap text-foreground"
             >
               {panelName}
             </motion.h1>
@@ -55,7 +55,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
       </div>
       
       {/* Navigation */}
-      <nav className="flex-1 w-full px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 w-full px-2.5 py-5 space-y-1 overflow-y-auto custom-scrollbar">
         {!isCollapsed && <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menu</p>}
         {links.map(link => {
           const isActive = location.pathname === link.path || (link.path !== '/' && location.pathname.startsWith(link.path));
@@ -65,18 +65,18 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
               to={link.path} 
               onClick={onClose}
               title={isCollapsed ? link.name : undefined}
-              className={`relative flex items-center ${isCollapsed ? 'justify-center' : 'px-3'} py-2.5 rounded-lg transition-colors group overflow-hidden`}
+              className={`relative flex items-center ${isCollapsed ? 'justify-center' : 'px-3'} py-2.5 rounded-md transition-colors group overflow-hidden`}
             >
               {isActive && (
                 <motion.div 
                   layoutId="activeTabSidebar" 
-                  className="absolute inset-0 bg-white/[0.06] rounded-lg" 
+                  className="absolute inset-0 bg-indigo-500/10 rounded-md"
                   initial={false} 
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
               )}
               {isActive && !isCollapsed && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-gradient-to-b from-fuchsia-400 to-cyan-300 rounded-r-full shadow-[0_0_12px_rgba(217,70,239,.5)]" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-indigo-500 rounded-r-full" />
               )}
               <div className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-muted-foreground group-hover:text-foreground'}`}>
                 {link.icon}
@@ -92,7 +92,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
       </nav>
       
       {/* User Profile */}
-      <div className="w-full p-4 border-t border-border-subtle mt-auto bg-transparent">
+      <div className="w-full p-3 border-t border-border-subtle mt-auto bg-card">
         {isCollapsed ? (
           <button onClick={logout} title="Logout" className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-colors">
             <LogOut size={20} />
@@ -100,7 +100,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
         ) : (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0">
+              <div className="w-9 h-9 rounded-md bg-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                 {user?.username?.[0]?.toUpperCase()}
               </div>
               <div className="truncate">
@@ -114,6 +114,6 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
           </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
