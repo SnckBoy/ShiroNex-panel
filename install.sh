@@ -56,7 +56,7 @@ tty_confirm() {
 
 banner() {
   printf '\n%s%s╭──────────────────────────────────────────────────────────╮%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET"
-  printf '%s%s│%s %s%sSHIRONEX%s %s%sINSTALLER%s %s│%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET" "$C_WHITE" "$C_BOLD" "$C_RESET" "$C_PURPLE" "$C_BOLD" "$C_RESET" "$C_CYAN" "$C_RESET"
+  printf '%s%s│%s %s%sSNCK%s %s%sINSTALLER%s %s│%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET" "$C_WHITE" "$C_BOLD" "$C_RESET" "$C_PURPLE" "$C_BOLD" "$C_RESET" "$C_CYAN" "$C_RESET"
   printf '%s%s│%s %sMinecraft & VPS Hosting Control Panel%s %s│%s\n' "$C_CYAN" "$C_BOLD" "$C_RESET" "$C_GRAY" "$C_RESET" "$C_CYAN" "$C_RESET"
   printf '%s%s╰──────────────────────────────────────────────────────────╯%s\n\n' "$C_CYAN" "$C_BOLD" "$C_RESET"
 }
@@ -565,7 +565,7 @@ uninstall_node() {
 }
 
 uninstall_all() {
-  section "Uninstall ShiroNex"
+  section "Uninstall Snck"
   step "Choose exactly which component to remove; backups are created first"
   require_root
   printf '\n  [1] Panel only\n  [2] Node only\n  [3] Panel and node\n  [0] Cancel\n\n'
@@ -585,7 +585,7 @@ uninstall_all() {
 }
 
 system_info() {
-  printf '\nShiroNex system information\n\n'
+  printf '\nSnck system information\n\n'
   uname -a
   printf 'OS: '; . /etc/os-release; printf '%s %s\n' "$NAME" "$VERSION_ID"
   printf 'Architecture: '; dpkg --print-architecture
@@ -605,7 +605,7 @@ menu() {
   printf '%s  [4]%s  Install Panel + Node\n' "$C_CYAN" "$C_RESET"
   printf '\n%s%s  MAINTENANCE%s\n' "$C_WHITE" "$C_BOLD" "$C_RESET"
   printf '%s  [5]%s  Configure HTTPS / SSL\n' "$C_PURPLE" "$C_RESET"
-  printf '%s  [6]%s  Update ShiroNex\n' "$C_PURPLE" "$C_RESET"
+  printf '%s  [6]%s  Update Snck\n' "$C_PURPLE" "$C_RESET"
   printf '%s  [7]%s  Repair Installation\n' "$C_PURPLE" "$C_RESET"
   printf '%s  [8]%s  Diagnostics\n' "$C_PURPLE" "$C_RESET"
   printf '%s  [9]%s  Uninstall\n' "$C_PURPLE" "$C_RESET"
