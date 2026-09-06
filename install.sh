@@ -63,6 +63,35 @@ banner() {
 
 require_root(){ [[ "$EUID" -eq 0 ]] || fail "Run with sudo/root."; }
 
+configure_panel_service() {
+  require_root
+  local pm2_bin
+  pm2_bin="$(command -v pm2 || true)"
+  [[ -n "$pm2_bin" ]] || return 0
+  cat > "/etc/systemd/system/${APP_NAME}.service" <<EOF
+[Unit]
+Description=Snck panel process manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=root
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PM2_HOME=/root/.pm2
+ExecStart=$pm2_bin resurrect
+ExecReload=$pm2_bin reload all
+ExecStop=$pm2_bin kill
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable "${APP_NAME}.service" >/dev/null 2>&1 || true
+  systemctl restart "${APP_NAME}.service" >/dev/null 2>&1 || systemctl start "${APP_NAME}.service" >/dev/null 2>&1 || true
+}
+
 check_os() {
   [[ -r /etc/os-release ]] || fail "Cannot detect operating system."
   . /etc/os-release
@@ -242,6 +271,7 @@ configure_panel() {
   pm2 delete "$APP_NAME" >/dev/null 2>&1 || true
   PORT="$PANEL_PORT" pm2 start ecosystem.config.cjs --name "$APP_NAME" --update-env
   pm2 save
+  configure_panel_service
   ok "Panel built and started"
 }
 
@@ -523,6 +553,7 @@ update_all() {
   npm run lint
   npm run build
   pm2 restart "$APP_NAME" --update-env
+  configure_panel_service
   [[ -x "$NODE_DIR/update.sh" ]] && bash "$NODE_DIR/update.sh" || true
   ok "Update complete"
 }
@@ -538,6 +569,7 @@ repair_all() {
   npm run lint
   npm run build
   pm2 restart "$APP_NAME" --update-env
+  configure_panel_service
   systemctl restart "$NODE_SERVICE" 2>/dev/null || true
   ok "Repair complete"
 }
