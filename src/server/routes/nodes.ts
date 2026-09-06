@@ -35,7 +35,50 @@ async function publicNodes(){
  return nodes.map((n:any)=>withNodeStatus(n,now));
 }
 router.get("/",async(req,res)=>res.json(await publicNodes()));
-router.post("/local",async(req,res)=>{try{const nodes=await readJSON(file)||[];const port=Number(req.body?.port)||8080;const dockerHost=String(req.body?.dockerHost||"/var/run/docker.sock");if(!Number.isInteger(port)||port<1||port>65535)return res.status(400).json({error:"Local node port must be a valid TCP port"});const existing=nodes.find((x:any)=>x.id==="local");const node=existing||{id:"local",createdAt:new Date().toISOString()};node.name=String(req.body?.name||node.name||"Local Node").trim();node.description=String(req.body?.description||node.description||"Panel host");node.hostname="127.0.0.1";node.fqdn="127.0.0.1";node.publicIp="127.0.0.1";node.apiPort=port;node.sftpPort=Number(req.body?.sftpPort||node.sftpPort||2022);node.tls=false;node.behindProxy=false;node.isLocal=true;node.disabled=false;node.maintenance=false;node.dockerHost=dockerHost;const runtime=await localDockerCheck(node);node.localReady=true;node.lastHeartbeat=new Date().toISOString();node.lastStats=runtime;node.error=null;if(!existing)nodes.push(node);await writeJSON(file,nodes);await audit(existing?"node.local.reused":"node.local.created",req,{nodeId:"local"});res.status(existing?200:201).json({...sanitize(node),status:"ONLINE",local:true,reused:Boolean(existing),runtime});}catch(e:any){res.status(503).json({error:"Local node could not be created because Docker is unavailable",dockerUnavailable:true,details:String(e?.message||e),hint:"Start Docker Engine and ensure the panel process can access the configured Docker socket."})}});
+router.post("/local",async(req,res)=>{
+ try{
+  const nodes=await readJSON(file)||[];
+  const port=Number(req.body?.port)||8080;
+  const dockerHost=String(req.body?.dockerHost||"/var/run/docker.sock");
+  if(!Number.isInteger(port)||port<1||port>65535)return res.status(400).json({error:"Local node port must be a valid TCP port"});
+  const existing=nodes.find((x:any)=>x.id==="local");
+  const node=existing||{id:"local",createdAt:new Date().toISOString()};
+  node.name=String(req.body?.name||node.name||"Local Node").trim();
+  node.description=String(req.body?.description||node.description||"Panel host");
+  node.hostname="127.0.0.1";
+  node.fqdn="127.0.0.1";
+  node.publicIp="127.0.0.1";
+  node.apiPort=port;
+  node.sftpPort=Number(req.body?.sftpPort||node.sftpPort||2022);
+  node.tls=false;
+  node.behindProxy=false;
+  node.isLocal=true;
+  node.disabled=false;
+  node.maintenance=false;
+  node.dockerHost=dockerHost;
+  if(!existing)nodes.push(node);
+  try{
+   const runtime=await localDockerCheck(node);
+   node.localReady=true;
+   node.lastHeartbeat=new Date().toISOString();
+   node.lastStats=runtime;
+   node.error=null;
+   await writeJSON(file,nodes);
+   await audit(existing?"node.local.reused":"node.local.created",req,{nodeId:"local"});
+   return res.status(existing?200:201).json({...sanitize(node),status:"ONLINE",local:true,reused:Boolean(existing),runtime,ready:true});
+  }catch(e:any){
+   node.localReady=false;
+   node.lastHeartbeat=null;
+   node.lastStats={docker:false,system:{status:"unavailable",socket:dockerHost}};
+   node.error=String(e?.message||e);
+   await writeJSON(file,nodes);
+   await audit(existing?"node.local.updated_unavailable":"node.local.created_unavailable",req,{nodeId:"local"});
+   return res.status(existing?200:201).json({...sanitize(node),status:"ERROR",local:true,reused:Boolean(existing),ready:false,dockerUnavailable:true,details:node.error,hint:"The local node record was saved, but Docker is unavailable. Start Docker Engine and make /var/run/docker.sock accessible, then click Test health."});
+  }
+ }catch(e:any){
+  return res.status(500).json({error:"Local node could not be saved",details:String(e?.message||e),hint:"Check the panel data directory permissions and panel logs."});
+ }
+});
 router.get("/:id",async(req,res)=>{const n=(await readJSON(file)||[]).find((x:any)=>x.id===req.params.id);if(!n)return res.status(404).json({error:"Node not found"});res.json(withNodeStatus(n))});
 router.post("/",async(req,res)=>{
  const b=req.body || {};

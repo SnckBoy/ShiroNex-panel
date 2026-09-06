@@ -30,6 +30,7 @@ const requestErrorMessage = (requestError: any, fallback: string) => {
 };
 
 const endpointLabel = (node: any) => {
+  if (node.isLocal) return "Panel host · Docker socket";
   const host = node.fqdn || node.hostname || node.publicIp || "address pending";
   const port = node.behindProxy ? 443 : node.apiPort;
   return `${host}:${port}`;
@@ -76,7 +77,11 @@ export default function Nodes() {
     setNotice("");
     try {
       const response = await axios.post("/api/nodes/local", { port: 8080, dockerHost: "/var/run/docker.sock" });
-      setNotice(response.data?.reused ? "Local node is already configured and Docker is ready." : "Local node created and Docker is ready.");
+      if (response.data?.dockerUnavailable || response.data?.ready === false) {
+        setNotice("Local node record saved, but Docker is unavailable. Start Docker and use Test health.");
+      } else {
+        setNotice(response.data?.reused ? "Local node is already configured and Docker is ready." : "Local node created and Docker is ready.");
+      }
       await load();
     } catch (requestError: any) {
       setError(requestErrorMessage(requestError, "Local node creation failed."));
@@ -185,7 +190,7 @@ export default function Nodes() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 gap-3">
                   <div className="snx-brand-mark h-11 w-11"><Server className="h-5 w-5" /></div>
-                  <div className="min-w-0"><h2 className="truncate font-semibold text-foreground">{node.name}</h2><p className="truncate font-mono text-xs text-muted-foreground">{endpointLabel(node)}</p><p className="mt-1 text-[11px] text-muted-foreground">{node.os || "Linux daemon"} · {node.architecture || "architecture pending"}{node.behindProxy ? " · proxied ingress" : ""}</p></div>
+                  <div className="min-w-0"><h2 className="truncate font-semibold text-foreground">{node.name}</h2><p className="truncate font-mono text-xs text-muted-foreground">{endpointLabel(node)}</p><p className="mt-1 text-[11px] text-muted-foreground">{node.isLocal ? "Panel host" : (node.os || "Linux daemon")} · {node.isLocal ? "direct Docker runtime" : (node.architecture || "architecture pending")}{node.behindProxy ? " · proxied ingress" : ""}</p></div>
                 </div>
                 <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] ${statusClass(node.status)}`}>{node.status || "OFFLINE"}</span>
               </div>
@@ -197,18 +202,18 @@ export default function Nodes() {
                 <div className="rounded-xl border border-white/10 bg-black/15 p-3"><CheckCircle2 className="mb-2 h-3.5 w-3.5 text-emerald-300" /><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Docker</div><b className="text-sm">{typeof stats.docker === "boolean" ? (stats.docker ? "Ready" : "Down") : "—"}</b></div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>Last heartbeat: <b className={node.status === "ONLINE" ? "text-emerald-300" : "text-amber-200"}>{ageLabel(node)}</b></span><span>Servers: {stats.servers?.running ?? "—"}/{stats.servers?.total ?? "—"} running</span><span>Daemon: {node.daemonVersion || stats.daemonVersion || "pending"}</span></div>
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{node.isLocal ? "Runtime check" : "Last heartbeat"}: <b className={node.status === "ONLINE" ? "text-emerald-300" : "text-amber-200"}>{node.isLocal ? (node.status === "ONLINE" ? "Ready" : "Needs attention") : ageLabel(node)}</b></span><span>Servers: {stats.servers?.running ?? "—"}/{stats.servers?.total ?? "—"} running</span><span>Daemon: {node.daemonVersion || stats.daemonVersion || "pending"}</span></div>
               {nodeHealth && <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3 text-xs text-muted-foreground">Health: <b className={nodeHealth.node?.status === "ok" ? "text-emerald-300" : "text-rose-300"}>{nodeHealth.node?.status || "unknown"}</b>{nodeHealth.node?.latencyMs != null && ` · ${nodeHealth.node.latencyMs}ms`}{nodeHealth.docker != null && ` · Docker ${nodeHealth.docker ? "ready" : "unavailable"}`}</div>}
 
               <div className="mt-5 flex flex-wrap gap-2">
                 <button type="button" disabled={busy !== null} onClick={() => openEdit(node)} className="snx-secondary-button"><Pencil className="h-3.5 w-3.5" /> Edit</button>
-                <button type="button" disabled={busy !== null} onClick={() => void testHealth(node.id)} className="snx-secondary-button"><Wrench className="h-3.5 w-3.5" /> Test health</button>
-                <button type="button" disabled={busy !== null} onClick={() => void restartNode(node.id)} className="snx-secondary-button"><RotateCw className={`h-3.5 w-3.5 ${busy === `${node.id}:restart` ? "animate-spin" : ""}`} /> Restart node</button>
-                <button type="button" disabled={busy !== null} onClick={() => void action(node.id, "reconnect")} className="snx-secondary-button"><RefreshCw className="h-3.5 w-3.5" /> Reconnect</button>
+                <button type="button" disabled={busy !== null} onClick={() => void testHealth(node.id)} className="snx-secondary-button"><Wrench className="h-3.5 w-3.5" /> {node.isLocal ? "Check Docker" : "Test health"}</button>
+                {!node.isLocal && <><button type="button" disabled={busy !== null} onClick={() => void restartNode(node.id)} className="snx-secondary-button"><RotateCw className={`h-3.5 w-3.5 ${busy === `${node.id}:restart` ? "animate-spin" : ""}`} /> Restart node</button>
+                <button type="button" disabled={busy !== null} onClick={() => void action(node.id, "reconnect")} className="snx-secondary-button"><RefreshCw className="h-3.5 w-3.5" /> Reconnect</button></>}
                 <a href={`/allocations?nodeId=${encodeURIComponent(node.id)}`} className="snx-secondary-button"><ClipboardList className="h-3.5 w-3.5" /> Allocations</a>
                 <button type="button" disabled={busy !== null} onClick={() => void action(node.id, isMaintenance ? "maintenance" : "maintenance", isMaintenance ? "delete" : "post")} className="snx-secondary-button"><Power className="h-3.5 w-3.5" /> {isMaintenance ? "Exit maintenance" : "Maintenance"}</button>
                 <button type="button" disabled={busy !== null} onClick={() => void action(node.id, node.disabled ? "enable" : "disable")} className="snx-secondary-button"><Power className="h-3.5 w-3.5" /> {node.disabled ? "Enable" : "Disable"}</button>
-                <button type="button" disabled={busy !== null} onClick={() => void action(node.id, "rotate")} className="snx-secondary-button"><RotateCw className="h-3.5 w-3.5" /> Rotate credential</button>
+                {!node.isLocal && <button type="button" disabled={busy !== null} onClick={() => void action(node.id, "rotate")} className="snx-secondary-button"><RotateCw className="h-3.5 w-3.5" /> Rotate credential</button>}
                 <button type="button" disabled={busy !== null} onClick={() => void remove(node.id)} className="snx-secondary-button text-rose-300"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
               </div>
             </article>
