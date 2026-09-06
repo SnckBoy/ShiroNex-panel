@@ -1,10 +1,12 @@
 import axios, { AxiosInstance } from "axios";
+import https from "node:https";
 
 export type NodeRecord = {
   id: string;
   baseUrl: string;
   credential: string;
   headers?: Record<string, string>;
+  tlsVerify?: boolean;
 };
 
 const defaultTimeout = Math.max(3000, Number(process.env.NODE_REQUEST_TIMEOUT_MS || 12000));
@@ -13,6 +15,7 @@ const deploymentTimeout = Math.max(300000, Number(process.env.NODE_DEPLOYMENT_TI
 const clientFor = (node: NodeRecord, timeout = defaultTimeout): AxiosInstance => axios.create({
   baseURL: node.baseUrl.replace(/\/$/, ""),
   timeout,
+  httpsAgent: node.tlsVerify === false ? new https.Agent({ rejectUnauthorized: false }) : undefined,
   headers: {
     Authorization: `Bearer ${node.credential}`,
     "X-ShiroNex-Node": node.id,

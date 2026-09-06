@@ -5,6 +5,7 @@ export type NodeEndpoint = {
   baseUrl: string;
   credential: string;
   headers?: Record<string, string>;
+  tlsVerify?: boolean;
 };
 
 const hasScheme = (value: string) => /^[a-z][a-z\d+.-]*:\/\//i.test(value);
@@ -19,7 +20,7 @@ const hasScheme = (value: string) => /^[a-z][a-z\d+.-]*:\/\//i.test(value);
  * on the public hostname.
  */
 export const nodeBaseUrl = (node: any) => {
-  const configured = String(node?.fqdn || node?.hostname || node?.publicIp || "").trim();
+  const configured = String(node?.publicFqdn || node?.fqdn || node?.hostname || node?.publicIp || "").trim();
   if (!configured) throw new Error("Node has no hostname or FQDN configured");
 
   const protocol = node?.behindProxy ? "https" : (node?.tls === false ? "http" : "https");
@@ -63,6 +64,7 @@ export const nodeConnection = (node: any): NodeEndpoint => {
     baseUrl: nodeBaseUrl(node),
     credential,
     headers: Object.keys(headers).length ? headers : undefined,
+    tlsVerify: node.tlsVerify !== false,
   };
 };
 
