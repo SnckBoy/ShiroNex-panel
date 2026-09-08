@@ -63,6 +63,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setSetupRequired(false);
     localStorage.setItem("shironex_token", newToken);
     axios.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+    // Same-tab localStorage writes never fire the browser "storage" event, so
+    // anything that needs to react to login within this tab (e.g. opening an
+    // authenticated socket.io connection) has no signal otherwise. Broadcast
+    // a same-tab custom event other providers can subscribe to.
+    window.dispatchEvent(new CustomEvent("shironex-auth-changed", { detail: { token: newToken } }));
   };
 
   const logout = () => {
@@ -70,6 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(null);
     localStorage.removeItem("shironex_token");
     delete axios.defaults.headers.common["Authorization"];
+    window.dispatchEvent(new CustomEvent("shironex-auth-changed", { detail: { token: null } }));
   };
 
   const markSetupComplete = () => setSetupRequired(false);

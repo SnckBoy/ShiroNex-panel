@@ -96,16 +96,31 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
     };
     mediaQuery?.addEventListener?.("change", handleSystemTheme);
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      return () => mediaQuery?.removeEventListener?.("change", handleSystemTheme);
-    }
+    // Must match the key AuthContext actually stores the JWT under
+    // ("shironex_token"). This previously read a nonexistent "token" key, so
+    // the settings socket never connected and live settings pushes never
+    // reached already-open tabs until a full page reload.
+    let socket: ReturnType<typeof io> | null = null;
 
-    const socket = io({ auth: { token } });
-    socket.on("settings_updated", fetchSettings);
+    const connect = () => {
+      socket?.disconnect();
+      socket = null;
+      const token = localStorage.getItem("shironex_token");
+      if (!token) return;
+      socket = io({ auth: { token } });
+      socket.on("settings_updated", fetchSettings);
+    };
+
+    connect();
+    // Reconnect immediately on login/logout within this tab instead of
+    // requiring a full page reload (localStorage writes don't emit a
+    // same-tab "storage" event).
+    window.addEventListener("shironex-auth-changed", connect);
+
     return () => {
-      socket.disconnect();
+      socket?.disconnect();
       mediaQuery?.removeEventListener?.("change", handleSystemTheme);
+      window.removeEventListener("shironex-auth-changed", connect);
     };
   }, []);
 
