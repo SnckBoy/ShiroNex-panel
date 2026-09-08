@@ -293,6 +293,20 @@ body {
 .snx-page-state{min-height:16rem;display:grid;place-items:center;align-content:center;gap:.75rem;padding:2rem;text-align:center;color:var(--text-muted-foreground)}.snx-page-state strong{color:var(--text-foreground);font-size:1rem}.snx-page-state p{max-width:32rem;margin:0;line-height:1.6}.snx-page-state button{border:1px solid var(--border-border);background:var(--bg-muted);color:var(--text-foreground);border-radius:.6rem;padding:.65rem .9rem;cursor:pointer}.snx-page-state button:hover{background:var(--bg-muted-hover)}
 @media(max-width:640px){.snx-app-content{padding-inline:.75rem}.snx-page-header{gap:.75rem}.snx-page-header h1{font-size:1.45rem}.snx-card-grid{grid-template-columns:1fr}.snx-table-wrap{overflow-x:auto}.snx-table-wrap table{min-width:620px}}
 
+/* Dark-only panel: this final layer wins over legacy light/theme presets. */
+html, html[data-theme], html[data-appearance], body { background-color:#020304 !important; color:#f4f7f8 !important; color-scheme:dark !important; }
+html[data-appearance="light"], html[data-theme="light"], html.light, body.light { --bg-background:#020304 !important; --bg-card:#0a0d10 !important; --text-foreground:#f4f7f8 !important; --text-foreground-muted:#c5d0d3 !important; --text-muted-foreground:#8c9a9f !important; --border-border:rgba(210,230,232,.16) !important; --border-border-subtle:rgba(210,230,232,.09) !important; --border-border-strong:rgba(210,230,232,.28) !important; --bg-muted:rgba(210,230,232,.07) !important; --bg-muted-hover:rgba(210,230,232,.13) !important; }
+body::before, body::after { opacity:.035 !important; }
+.snx-app-shell, .snx-server-layout, .snx-app-sidebar, .snx-global-topbar, .modal-content, [role="dialog"], dialog, .shironex-glass, .qx-glass { background-color:#080b0e !important; color:#f4f7f8 !important; }
+input, textarea, select, button { color-scheme:dark; }
+input, textarea, select { background-color:#0b0f12 !important; color:#f4f7f8 !important; border-color:rgba(210,230,232,.16) !important; }
+input::placeholder, textarea::placeholder { color:#718086 !important; }
+.bg-white, .bg-slate-50, .bg-gray-50, .bg-zinc-50, .bg-neutral-50 { background-color:#080b0e !important; }
+.text-black { color:#f4f7f8 !important; }
+.border-white, .border-slate-200, .border-gray-200, .border-zinc-200 { border-color:rgba(210,230,232,.16) !important; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.001ms !important; } }
+
 /* Theme transitions stay scoped to surfaces and controls to avoid animating the whole DOM. */
 body,
 .snx-app-shell,
