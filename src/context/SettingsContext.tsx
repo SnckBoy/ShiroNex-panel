@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import axios from "axios";
 import { io } from "socket.io-client";
 
-const VALID_APPEARANCES = new Set(["dark", "light", "system"]);
+const VALID_APPEARANCES = new Set(["dark"]);
 const VALID_THEMES = new Set(["aurora", "midnight", "nebula", "cyber", "royal-purple", "ocean", "emerald", "crimson"]);
 const VALID_ACCENTS = new Set(["purple", "indigo", "blue", "cyan", "emerald", "pink", "red"]);
 const VALID_BACKGROUND_EFFECTS = new Set(["none", "aurora", "animated-gradient", "grid", "nebula", "starfield"]);
@@ -10,10 +10,7 @@ const VALID_BACKGROUND_EFFECTS = new Set(["none", "aurora", "animated-gradient",
 const safeChoice = (value: unknown, allowed: Set<string>, fallback: string) =>
   typeof value === "string" && allowed.has(value) ? value : fallback;
 
-const getSystemAppearance = () =>
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches
-    ? "light"
-    : "dark";
+const getSystemAppearance = () => "dark";
 
 export const SettingsContext = createContext<any>(null);
 
@@ -28,6 +25,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [enableRegistration, setEnableRegistration] = useState<boolean>(true);
   const [theme, setTheme] = useState<string>("aurora");
   const [appearance, setAppearance] = useState<string>("dark");
+
+  const setDarkAppearance = () => setAppearance("dark");
   const [accent, setAccent] = useState<string>("purple");
   const [backgroundEffect, setBackgroundEffect] = useState<string>("aurora");
   const [reducedMotion, setReducedMotion] = useState<boolean>(false);
@@ -43,7 +42,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
     if (typeof document === "undefined") return;
 
     const root = document.documentElement;
-    const resolvedAppearance = appearance === "system" ? getSystemAppearance() : safeChoice(appearance, VALID_APPEARANCES, "dark");
+    const resolvedAppearance = "dark";
     const resolvedTheme = safeChoice(theme, VALID_THEMES, "aurora");
     const resolvedAccent = safeChoice(accent, VALID_ACCENTS, "purple");
     const resolvedBackground = safeChoice(backgroundEffect, VALID_BACKGROUND_EFFECTS, "aurora");
@@ -55,7 +54,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
     root.dataset.backgroundEffect = resolvedBackground;
     root.classList.toggle("reduce-motion", reducedMotion);
     root.style.setProperty("--accent-color", `var(--accent-${resolvedAccent})`);
-    root.style.colorScheme = resolvedAppearance === "light" ? "light" : "dark";
+    root.style.colorScheme = "dark";
   };
 
   const fetchSettings = async () => {
@@ -71,7 +70,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (settings.enableLoginAnimation !== undefined) setEnableLoginAnimation(Boolean(settings.enableLoginAnimation));
       if (settings.enableRegistration !== undefined) setEnableRegistration(Boolean(settings.enableRegistration));
       if (settings.theme !== undefined) setTheme(safeChoice(String(settings.theme), VALID_THEMES, "aurora"));
-      if (settings.appearance !== undefined) setAppearance(safeChoice(settings.appearance, VALID_APPEARANCES, "dark"));
+      if (settings.appearance !== undefined) setDarkAppearance();
       if (settings.accent !== undefined) setAccent(safeChoice(settings.accent, VALID_ACCENTS, "purple"));
       if (settings.backgroundEffect !== undefined) setBackgroundEffect(safeChoice(settings.backgroundEffect, VALID_BACKGROUND_EFFECTS, "aurora"));
       if (settings.reducedMotion !== undefined) setReducedMotion(Boolean(settings.reducedMotion));
@@ -128,7 +127,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
     enableLoginAnimation, setEnableLoginAnimation,
     enableRegistration, setEnableRegistration,
     theme, setTheme,
-    appearance, setAppearance,
+    appearance, setAppearance: setDarkAppearance,
     accent, setAccent,
     backgroundEffect, setBackgroundEffect,
     reducedMotion, setReducedMotion,

@@ -21,9 +21,11 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
 }
 
 const app = express();
+app.disable("x-powered-by");
 const httpServer = process.env.PANEL_TLS_KEY && process.env.PANEL_TLS_CERT ? createHttpsServer({key:fs.readFileSync(process.env.PANEL_TLS_KEY),cert:fs.readFileSync(process.env.PANEL_TLS_CERT)},app) : createHttpServer(app);
+const allowedOrigin = process.env.PANEL_ORIGIN || true;
 export const io = new SocketIOServer(httpServer, {
-  cors: { origin: "*" },
+  cors: { origin: allowedOrigin, credentials: true },
 });
 app.set("io", io);
 
@@ -59,6 +61,17 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
   socket.on("joinServer", async (serverId) => {
+    const user = (socket as any).user;
+    if (!/^[a-zA-Z0-9_-]+$/.test(String(serverId || ""))) {
+      socket.emit("serverError", { error: "Invalid server id" });
+      return;
+    }
+    const serverList = await fs.readJSON(path.join(DATA_DIR, "servers.json")).catch(() => []);
+    const server = Array.isArray(serverList) ? serverList.find((candidate: any) => candidate.id === serverId) : null;
+    if (!server || (user?.role !== "admin" && user?.role !== "owner" && server.owner !== user?.id)) {
+      socket.emit("serverError", { error: "Forbidden" });
+      return;
+    }
     socket.join(`server_${serverId}`);
     
     // Ensure logs are streamed if container is already running
@@ -83,7 +96,12 @@ io.on("connection", (socket) => {
   });
   socket.on("leaveServer", (serverId) => {
     const poll=(socket.data as any).logPolls?.[serverId];if(poll)clearInterval(poll);
+    delete (socket.data as any).logPolls?.[serverId];
     socket.leave(`server_${serverId}`);
+  });
+  socket.on("disconnect", () => {
+    for (const poll of Object.values((socket.data as any).logPolls || {})) clearInterval(poll as NodeJS.Timeout);
+    (socket.data as any).logPolls = {};
   });
 });
 
@@ -95,7 +113,17 @@ const HOST = process.env.HOST || "0.0.0.0";
 // oversized JSON/form body and exhaust server RAM before a single upload happened.
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(cors());
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=63072000");
+  next();
+});
+app.use(cors({
+  origin: process.env.PANEL_ORIGIN || true,
+  credentials: true,
+}));
 app.get("/health", (_req, res) => res.json({ ok: true, service: "shironex-panel", timestamp: new Date().toISOString() }));
 
 import apiRoutes from "./src/server/routes/api.js";
