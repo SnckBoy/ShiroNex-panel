@@ -166,6 +166,9 @@ fs.writeFileSync(path, JSON.stringify(obj)+"\n", {mode:0o600});
 
 npm run build
 
+NODE_BIN="$(command -v node)"
+[[ -x "$NODE_BIN" ]] || fail "Node.js executable was not found after installation."
+
 cat >"/etc/systemd/system/$SERVICE.service" <<EOF
 [Unit]
 Description=ShiroNex Node Daemon
@@ -175,7 +178,7 @@ Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node $NODE_DIR/dist/index.js
+ExecStart=$NODE_BIN $NODE_DIR/dist/index.js
 Restart=always
 RestartSec=3
 User=root

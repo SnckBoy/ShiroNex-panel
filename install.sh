@@ -159,7 +159,10 @@ install_docker() {
   step "Checking Docker availability"
   if command -v docker >/dev/null 2>&1; then
     if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
-    docker info >/dev/null 2>&1 || fail "Docker is installed but not responding."
+    if ! docker info >/dev/null 2>&1; then
+      warn "Docker is installed but not responding."
+      return 1
+    fi
     ok "Docker detected"
     return
   fi
@@ -196,7 +199,10 @@ EOF
     fi
   fi
   if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then systemctl enable --now docker || true; fi
-  docker info >/dev/null 2>&1 || fail "Docker installation failed."
+  if ! docker info >/dev/null 2>&1; then
+    warn "Docker installation completed, but the Docker daemon is not responding."
+    return 1
+  fi
   ok "Docker installed"
 }
 
@@ -358,7 +364,7 @@ install_panel() {
   # Native panel mode does not require Docker to serve the web UI. Docker is
   # required for local-node and container operations, but an Ubuntu VPS may
   # not have a usable systemd/Docker runtime during the initial install.
-  if ! install_docker; then
+  if ! (set +e; install_docker); then
     warn "Docker could not be started during panel installation. The panel will still be installed; start Docker before creating a local node."
   fi
   [[ -d "$APP_DIR/.data" || -f "$APP_DIR/.env" ]] && backup
@@ -419,6 +425,9 @@ NODE
   npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
   npm run build
 
+  local node_bin
+  node_bin="$(command -v node)"
+  [[ -x "$node_bin" ]] || fail "Node.js executable was not found after installation."
   cat >"/etc/systemd/system/$NODE_SERVICE.service" <<EOF
 [Unit]
 Description=ShiroNex Node Daemon (local)
@@ -428,7 +437,7 @@ Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node $NODE_DIR/dist/index.js
+ExecStart=$node_bin $NODE_DIR/dist/index.js
 Restart=always
 RestartSec=3
 User=root
@@ -440,8 +449,19 @@ EOF
   systemctl daemon-reload
   systemctl enable --now "$NODE_SERVICE"
   systemctl is-active --quiet "$NODE_SERVICE" || fail "Local node service failed. Check: journalctl -u $NODE_SERVICE -n 100 --no-pager"
-  sleep 2
-  ok "Local node installed and service is running"
+  local heartbeat_ok=false
+  for _ in {1..12}; do
+    if node -e 'const fs=require("fs"); try { const n=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).find(x=>x.id==="local"); process.exit(n?.lastHeartbeat ? 0 : 1); } catch { process.exit(1); }' "$APP_DIR/.data/nodes.json" 2>/dev/null; then
+      heartbeat_ok=true
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$heartbeat_ok" != true ]]; then
+    warn "Local daemon is running but has not sent an authenticated heartbeat yet. Check: journalctl -u $NODE_SERVICE -n 100 --no-pager"
+    return 1
+  fi
+  ok "Local node installed, authenticated, and online"
 }
 
 install_node() {
