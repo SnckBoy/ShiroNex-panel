@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Sidebar } from "./Sidebar";
-import { Menu, ChevronRight } from "lucide-react";
+import { Menu, ChevronRight, Command, ShieldCheck } from "lucide-react";
 import { useLocation, matchPath, Link } from "react-router-dom";
 import GlobalSearchModal from "./GlobalSearchModal";
 import NotificationsDropdown from "./NotificationsDropdown";
@@ -18,6 +18,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (path === '/servers') return 'Servers';
     if (path === '/servers/create') return 'Deploy Server';
     if (path.startsWith('/servers/')) return 'Server Management';
+    if (path === '/admin') return 'Admin control center';
     if (path === '/admin/servers') return 'Fleet';
     if (path === '/settings') return 'Settings';
     if (path === '/api-keys') return 'API Keys';
@@ -61,7 +62,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <button type="button" aria-label={isCollapsed ? "Expand navigation menu" : "Collapse navigation menu"} onClick={() => setIsCollapsed(!isCollapsed)} className="snx-topbar-icon hidden md:flex p-2 -ml-2 rounded-lg">
               <Menu size={20} aria-hidden="true" />
             </button>
-            <div className="hidden sm:flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <div className="hidden sm:flex items-center gap-3 text-sm font-medium text-muted-foreground">
+              <span className="snx-command-chip"><Command size={14} aria-hidden="true" /> <span>Quick command</span> <kbd>⌘ K</kbd></span>
+              <ChevronRight size={14} aria-hidden="true" />
               <span className="text-foreground">{getBreadcrumb()}</span>
             </div>
           </div>

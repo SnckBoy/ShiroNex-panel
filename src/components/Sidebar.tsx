@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Server, LayoutDashboard, Plus, LogOut, X, Settings, Key, User, Activity, Box, Search, Bell, Cloud } from "lucide-react";
+import { Server, LayoutDashboard, Plus, LogOut, X, Settings, Key, User, Activity, Box, Search, Bell, Cloud, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,6 +19,7 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
 
   if (canAdminister) {
     links.push({ name: "Deploy", path: "/servers/create", icon: <Plus size={20} /> });
+    links.push({ name: "Admin control", path: "/admin", icon: <ShieldCheck size={20} /> });
     links.push({ name: "Fleet", path: "/admin/servers", icon: <Box size={20} /> });
     links.push({ name: "API Keys", path: "/api-keys", icon: <Key size={20} /> });
     links.push({ name: "Cloudflare", path: "/cloudflare", icon: <Cloud size={20} /> });
