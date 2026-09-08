@@ -68,7 +68,7 @@ io.on("connection", (socket) => {
     }
     const serverList = await fs.readJSON(path.join(DATA_DIR, "servers.json")).catch(() => []);
     const server = Array.isArray(serverList) ? serverList.find((candidate: any) => candidate.id === serverId) : null;
-    if (!server || (user?.role !== "admin" && user?.role !== "owner" && server.owner !== user?.id)) {
+    if (!server || (user?.role !== "admin" && user?.role !== "owner" && server.owner !== user?.id && !(server.subUsers || []).some((member: any) => member.userId === user?.id))) {
       socket.emit("serverError", { error: "Forbidden" });
       return;
     }
@@ -86,9 +86,17 @@ io.on("connection", (socket) => {
         }
         await attachContainerSocket(server.containerId, serverId, server.nodeId);
       }
-      if(server && server.containerId && server.nodeId && server.nodeId !== "local"){
-        const poll=setInterval(async()=>{try{const latest=await getContainerLogs(server.containerId,server.nodeId);if(latest)socket.emit("log",latest)}catch{}},3000);
-        (socket.data as any).logPolls=(socket.data as any).logPolls||{};(socket.data as any).logPolls[serverId]=poll;
+      if (server && server.containerId && server.nodeId && server.nodeId !== "local") {
+        const polls = ((socket.data as any).logPolls ||= {});
+        if (polls[serverId]) clearInterval(polls[serverId]);
+        polls[serverId] = setInterval(async () => {
+          try {
+            const latest = await getContainerLogs(server.containerId, server.nodeId);
+            if (latest) socket.emit("log", latest);
+          } catch {
+            // The next poll retries transient node failures.
+          }
+        }, 3000);
       }
     } catch (e) {
       console.error(e);

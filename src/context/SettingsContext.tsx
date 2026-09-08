@@ -90,22 +90,13 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   useEffect(() => {
     fetchSettings();
 
-    const mediaQuery = window.matchMedia?.("(prefers-color-scheme: light)");
-    const handleSystemTheme = () => {
-      if (appearance === "system") applyVisualSettings();
-    };
-    mediaQuery?.addEventListener?.("change", handleSystemTheme);
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      return () => mediaQuery?.removeEventListener?.("change", handleSystemTheme);
-    }
+    const token = localStorage.getItem("shironex_token");
+    if (!token) return;
 
     const socket = io({ auth: { token } });
     socket.on("settings_updated", fetchSettings);
     return () => {
       socket.disconnect();
-      mediaQuery?.removeEventListener?.("change", handleSystemTheme);
     };
   }, []);
 
