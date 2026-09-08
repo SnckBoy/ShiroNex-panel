@@ -27,6 +27,7 @@ import { GlobalBackground } from "./components/GlobalBackground";
 import { SystemUpdateListener } from "./components/SystemUpdateListener";
 import { TutorialOverlay } from "./components/TutorialOverlay";
 import CoreCheckpoint from "./pages/CoreCheckpoint";
+import AdminDashboard from "./pages/AdminDashboard";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading, setupRequired } = useAuth();
@@ -82,6 +83,7 @@ const AnimatedRoutes = () => {
           <Route path="/servers/:id/*" element={<ProtectedRoute><ServerView /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/api-keys" element={<ProtectedRoute><AdminOnlyRoute><ApiKeysPage /></AdminOnlyRoute></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminOnlyRoute><AdminDashboard /></AdminOnlyRoute></ProtectedRoute>} />
           <Route path="/admin/servers" element={<ProtectedRoute><AdminOnlyRoute><AdminServers /></AdminOnlyRoute></ProtectedRoute>} />
         </Routes>
       </motion.div>
