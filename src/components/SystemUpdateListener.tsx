@@ -7,25 +7,35 @@ export function SystemUpdateListener() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    
-    const socket = io({
-      auth: {
-        token: token
-      }
-    });
-    
-    socket.on("system_update_started", () => {
-      setShowPrompt(true);
-      // Automatically refresh after 10 seconds as a fallback
-      setTimeout(() => {
-        window.location.reload();
-      }, 10000);
-    });
+    let socket: ReturnType<typeof io> | null = null;
+
+    const connect = () => {
+      socket?.disconnect();
+      socket = null;
+      // Must match the key AuthContext stores the JWT under
+      // ("shironex_token"). This previously read a nonexistent "token" key,
+      // so the update banner never appeared for any signed-in user.
+      const token = localStorage.getItem("shironex_token");
+      if (!token) return;
+
+      socket = io({ auth: { token } });
+      socket.on("system_update_started", () => {
+        setShowPrompt(true);
+        // Automatically refresh after 10 seconds as a fallback
+        setTimeout(() => {
+          window.location.reload();
+        }, 10000);
+      });
+    };
+
+    connect();
+    // Reconnect immediately on login/logout within this tab instead of only
+    // on the next full page reload.
+    window.addEventListener("shironex-auth-changed", connect);
 
     return () => {
-      socket.disconnect();
+      socket?.disconnect();
+      window.removeEventListener("shironex-auth-changed", connect);
     };
   }, []);
 

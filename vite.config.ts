@@ -25,10 +25,14 @@ export default defineConfig(() => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: true,
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: { usePolling: true },
+      // Allow the sandbox/dev-preview proxy host (and any custom domain) to reach
+      // the Vite dev server. Without this, Vite 5+ rejects unrecognized Host
+      // headers with a 403 "Blocked request" response before the app loads.
+      allowedHosts: true,
     },
   };
 });

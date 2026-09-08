@@ -32,32 +32,48 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
     let i = 0;
     const text = currentStep.text;
     
-    // Setup audio context for typewriter sound
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    
+    // Setup audio context for typewriter sound. Browsers block AudioContext
+    // creation/resume until a real user gesture (click/keypress) has occurred
+    // on the page; creating it eagerly on mount just spams the console with
+    // "AudioContext was not allowed to start" warnings and never makes sound.
+    // Lazily create it on first use, and only attempt playback once it is
+    // actually in the "running" state.
+    const getAudioContext = () => {
+      if (!audioCtxRef.current) {
+        const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtor) return null;
+        audioCtxRef.current = new AudioCtor();
+      }
+      return audioCtxRef.current;
+    };
+
     const playClickSound = () => {
-      if (!audioCtxRef.current) return;
-      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-      
-      const t = audioCtxRef.current.currentTime;
-      
-      const osc = audioCtxRef.current.createOscillator();
-      const gainNode = audioCtxRef.current.createGain();
-      
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') {
+        // resume() itself requires a user gesture; swallow rejections quietly
+        // instead of letting them surface as unhandled promise warnings.
+        void ctx.resume().catch(() => {});
+      }
+      if (ctx.state !== 'running') return;
+
+      const t = ctx.currentTime;
+
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
       // Keyboard click synthesis: quick high-pitched sine drop
       osc.type = 'sine';
       osc.frequency.setValueAtTime(800 + Math.random() * 300, t);
       osc.frequency.exponentialRampToValueAtTime(100, t + 0.02);
-      
+
       gainNode.gain.setValueAtTime(0, t);
       gainNode.gain.linearRampToValueAtTime(0.15, t + 0.005);
       gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
-      
+
       osc.connect(gainNode);
-      gainNode.connect(audioCtxRef.current.destination);
-      
+      gainNode.connect(ctx.destination);
+
       osc.start(t);
       osc.stop(t + 0.04);
     };
