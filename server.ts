@@ -85,8 +85,11 @@ io.on("connection", (socket) => {
         await attachContainerSocket(server.containerId, serverId, server.nodeId);
       }
       if(server && server.containerId && server.nodeId && server.nodeId !== "local"){
+        const logPolls = (socket.data as any).logPolls = (socket.data as any).logPolls || {};
+        const previous = logPolls[requestedId];
+        if (previous) clearInterval(previous);
         const poll=setInterval(async()=>{try{const latest=await getContainerLogs(server.containerId,server.nodeId);if(latest)socket.emit("log",latest)}catch{}},3000);
-        (socket.data as any).logPolls=(socket.data as any).logPolls||{};(socket.data as any).logPolls[requestedId]=poll;
+        logPolls[requestedId]=poll;
       }
     } catch (e) {
       console.error("Socket server join failed", e);
@@ -97,7 +100,13 @@ io.on("connection", (socket) => {
     const requestedId = String(serverId || "");
     if (!/^[A-Za-z0-9_-]{1,160}$/.test(requestedId)) return;
     const poll=(socket.data as any).logPolls?.[requestedId];if(poll)clearInterval(poll);
+    if ((socket.data as any).logPolls) delete (socket.data as any).logPolls[requestedId];
     socket.leave(`server_${requestedId}`);
+  });
+  socket.on("disconnect", () => {
+    const polls = (socket.data as any).logPolls || {};
+    for (const poll of Object.values(polls)) clearInterval(poll as NodeJS.Timeout);
+    (socket.data as any).logPolls = {};
   });
 });
 
