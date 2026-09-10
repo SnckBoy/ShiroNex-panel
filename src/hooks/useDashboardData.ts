@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
 import { SystemStats, ServerSummary } from "../types/dashboard";
 
-type FetchState = "idle" | "loading" | "ready" | "error";
+type FetchState = "idle" | "loading" | "ready" | "partial" | "error";
 const POLL_MS = 5_000;
 
 export function useDashboardData() {
@@ -16,17 +16,17 @@ export function useDashboardData() {
   const mountedRef = useRef(true);
 
   const fetchData = useCallback(async () => {
-    controllerRef.current?.abort();
+    if (controllerRef.current) return;
     const controller = new AbortController();
     controllerRef.current = controller;
 
     try {
       const [statsRes, serversRes] = await Promise.allSettled([
-        axios.get<SystemStats>("/api/system/stats", { signal: controller.signal }),
-        axios.get<ServerSummary[]>("/api/servers", { signal: controller.signal }),
+        axios.get<SystemStats>("/api/system/stats", { signal: controller.signal, timeout: 20000 }),
+        axios.get<ServerSummary[]>("/api/servers", { signal: controller.signal, timeout: 20000 }),
       ]);
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || controller.signal.aborted) return;
 
       let hasError = false;
 
@@ -46,11 +46,13 @@ export function useDashboardData() {
         hasError = true;
       }
 
-      setLastUpdated(new Date());
-      setState(hasError && statsRes.status === "rejected" && serversRes.status === "rejected" ? "error" : "ready");
+      if (serversRes.status === "fulfilled") setLastUpdated(new Date());
+      setState(statsRes.status === "rejected" && serversRes.status === "rejected" ? "error" : hasError ? "partial" : "ready");
     } catch (error) {
       if (axios.isCancel(error) || !mountedRef.current) return;
       setState("error");
+    } finally {
+      if (controllerRef.current === controller) controllerRef.current = null;
     }
   }, []);
 
@@ -74,6 +76,7 @@ export function useDashboardData() {
     return () => {
       mountedRef.current = false;
       controllerRef.current?.abort();
+      controllerRef.current = null;
       if (timer) window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
