@@ -58,56 +58,73 @@ io.use((socket, next) => {
 });
 
 io.on("connection", (socket) => {
+  type Subscription = { cancelled: boolean; timer?: ReturnType<typeof setInterval>; polling: boolean; previous: string[] };
+  const subscriptions = new Map<string, Subscription>();
+  const leave = (id: string) => {
+    const subscription = subscriptions.get(id);
+    if (subscription) { subscription.cancelled = true; clearInterval(subscription.timer); }
+    subscriptions.delete(id);
+    socket.leave(`server_${id}`);
+  };
   socket.on("joinServer", async (serverId) => {
     const requestedId = String(serverId || "");
     if (!/^[A-Za-z0-9_-]{1,160}$/.test(requestedId)) {
       socket.emit("server_access_denied", { serverId: requestedId, error: "Invalid server ID" });
       return;
     }
+    leave(requestedId);
+    const subscription: Subscription = { cancelled: false, polling: false, previous: [] };
+    subscriptions.set(requestedId, subscription);
+    const active = () => socket.connected && !subscription.cancelled;
+    // Daemons return a rolling log tail. Emit only the suffix not already delivered.
+    const emitSnapshot = (text: string) => {
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      let overlap = Math.min(subscription.previous.length, lines.length);
+      while (overlap > 0 && !subscription.previous.slice(-overlap).every((line, index) => line === lines[index])) overlap--;
+      const fresh = lines.slice(overlap);
+      subscription.previous = lines.slice(-200);
+      if (fresh.length) socket.emit("log", fresh.join("\n") + "\n");
+    };
     try {
-      const serversJSON = await fs.readFile(path.join(DATA_DIR, "servers.json"), "utf8");
-      const servers = JSON.parse(serversJSON);
+      const servers = JSON.parse(await fs.readFile(path.join(DATA_DIR, "servers.json"), "utf8"));
+      if (!active()) return;
       const server = Array.isArray(servers) ? servers.find((s: any) => s.id === requestedId) : null;
       const user = (socket as any).user || {};
       const staff = user.role === "admin" || user.role === "owner";
       const subUser = Array.isArray(server?.subUsers) && server.subUsers.some((entry: any) => String(entry?.userId) === String(user.id));
       if (!server || (!staff && server.owner !== user.id && !subUser)) {
+        leave(requestedId);
         socket.emit("server_access_denied", { serverId: requestedId, error: "You are not authorized to access this server" });
         return;
       }
       socket.join(`server_${requestedId}`);
-      // Ensure logs are streamed if the container is already running
-      if (server && server.containerId) {
-        const logs = await getContainerLogs(server.containerId, server.nodeId);
-        if (logs) {
-           socket.emit("log", logs.trim() + "\n");
-        }
-        await attachContainerSocket(server.containerId, serverId, server.nodeId);
+      socket.emit("server_joined", { serverId: requestedId });
+      if (!server.containerId) return;
+      const logs = await getContainerLogs(server.containerId, server.nodeId);
+      if (!active()) return;
+      if (logs) emitSnapshot(logs);
+      await attachContainerSocket(server.containerId, requestedId, server.nodeId);
+      if (!active()) return;
+      if (server.nodeId && server.nodeId !== "local") {
+        subscription.timer = setInterval(async () => {
+          if (!active() || subscription.polling) return;
+          subscription.polling = true;
+          try {
+            const latest = await getContainerLogs(server.containerId, server.nodeId);
+            if (active() && latest) emitSnapshot(latest);
+          } catch { /* Retain history while the daemon reconnects. */ }
+          finally { subscription.polling = false; }
+        }, 3000);
       }
-      if(server && server.containerId && server.nodeId && server.nodeId !== "local"){
-        const logPolls = (socket.data as any).logPolls = (socket.data as any).logPolls || {};
-        const previous = logPolls[requestedId];
-        if (previous) clearInterval(previous);
-        const poll=setInterval(async()=>{try{const latest=await getContainerLogs(server.containerId,server.nodeId);if(latest)socket.emit("log",latest)}catch{}},3000);
-        logPolls[requestedId]=poll;
-      }
-    } catch (e) {
-      console.error("Socket server join failed", e);
-      socket.emit("server_access_denied", { serverId: requestedId, error: "Unable to load server access data" });
+    } catch (error) {
+      if (!active()) return;
+      leave(requestedId);
+      console.error("Socket server join failed", error);
+      socket.emit("server_access_denied", { serverId: requestedId, error: "Unable to load server console data" });
     }
   });
-  socket.on("leaveServer", (serverId) => {
-    const requestedId = String(serverId || "");
-    if (!/^[A-Za-z0-9_-]{1,160}$/.test(requestedId)) return;
-    const poll=(socket.data as any).logPolls?.[requestedId];if(poll)clearInterval(poll);
-    if ((socket.data as any).logPolls) delete (socket.data as any).logPolls[requestedId];
-    socket.leave(`server_${requestedId}`);
-  });
-  socket.on("disconnect", () => {
-    const polls = (socket.data as any).logPolls || {};
-    for (const poll of Object.values(polls)) clearInterval(poll as NodeJS.Timeout);
-    (socket.data as any).logPolls = {};
-  });
+  socket.on("leaveServer", (serverId) => leave(String(serverId || "")));
+  socket.on("disconnect", () => { for (const id of subscriptions.keys()) leave(id); });
 });
 
 const PORT = Number(process.env.PORT || 6767);
