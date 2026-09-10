@@ -105,7 +105,9 @@ export const getServers = async (req: Request, res: Response) => {
   const userServers = user.role === "admin" || user.role === "owner" ? servers : servers.filter((s: any) => s.owner === user.id);
 
   // Update statuses
-  const [users, nodes] = await Promise.all([readJSON("users.json") || [], readJSON("nodes.json") || []]);
+  const [usersData, nodesData] = await Promise.all([readJSON("users.json"), readJSON("nodes.json")]);
+  const users = usersData || [];
+  const nodes = nodesData || [];
   const updatedServers = await Promise.all(userServers.map(async (server: any) => {
     const next = { ...server };
     if (server.containerId) {
