@@ -21,11 +21,9 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
 }
 
 const app = express();
-app.disable("x-powered-by");
 const httpServer = process.env.PANEL_TLS_KEY && process.env.PANEL_TLS_CERT ? createHttpsServer({key:fs.readFileSync(process.env.PANEL_TLS_KEY),cert:fs.readFileSync(process.env.PANEL_TLS_CERT)},app) : createHttpServer(app);
-const allowedOrigin = process.env.PANEL_ORIGIN || true;
 export const io = new SocketIOServer(httpServer, {
-  cors: { origin: allowedOrigin, credentials: true },
+  cors: { origin: "*" },
 });
 app.set("io", io);
 
@@ -61,24 +59,24 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
   socket.on("joinServer", async (serverId) => {
-    const user = (socket as any).user;
-    if (!/^[a-zA-Z0-9_-]+$/.test(String(serverId || ""))) {
-      socket.emit("serverError", { error: "Invalid server id" });
+    const requestedId = String(serverId || "");
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(requestedId)) {
+      socket.emit("server_access_denied", { serverId: requestedId, error: "Invalid server ID" });
       return;
     }
-    const serverList = await fs.readJSON(path.join(DATA_DIR, "servers.json")).catch(() => []);
-    const server = Array.isArray(serverList) ? serverList.find((candidate: any) => candidate.id === serverId) : null;
-    if (!server || (user?.role !== "admin" && user?.role !== "owner" && server.owner !== user?.id)) {
-      socket.emit("serverError", { error: "Forbidden" });
-      return;
-    }
-    socket.join(`server_${serverId}`);
-    
-    // Ensure logs are streamed if container is already running
     try {
       const serversJSON = await fs.readFile(path.join(DATA_DIR, "servers.json"), "utf8");
       const servers = JSON.parse(serversJSON);
-      const server = Array.isArray(servers) ? servers.find((s: any) => s.id === serverId) : null;
+      const server = Array.isArray(servers) ? servers.find((s: any) => s.id === requestedId) : null;
+      const user = (socket as any).user || {};
+      const staff = user.role === "admin" || user.role === "owner";
+      const subUser = Array.isArray(server?.subUsers) && server.subUsers.some((entry: any) => String(entry?.userId) === String(user.id));
+      if (!server || (!staff && server.owner !== user.id && !subUser)) {
+        socket.emit("server_access_denied", { serverId: requestedId, error: "You are not authorized to access this server" });
+        return;
+      }
+      socket.join(`server_${requestedId}`);
+      // Ensure logs are streamed if the container is already running
       if (server && server.containerId) {
         const logs = await getContainerLogs(server.containerId, server.nodeId);
         if (logs) {
@@ -88,20 +86,18 @@ io.on("connection", (socket) => {
       }
       if(server && server.containerId && server.nodeId && server.nodeId !== "local"){
         const poll=setInterval(async()=>{try{const latest=await getContainerLogs(server.containerId,server.nodeId);if(latest)socket.emit("log",latest)}catch{}},3000);
-        (socket.data as any).logPolls=(socket.data as any).logPolls||{};(socket.data as any).logPolls[serverId]=poll;
+        (socket.data as any).logPolls=(socket.data as any).logPolls||{};(socket.data as any).logPolls[requestedId]=poll;
       }
     } catch (e) {
-      console.error(e);
+      console.error("Socket server join failed", e);
+      socket.emit("server_access_denied", { serverId: requestedId, error: "Unable to load server access data" });
     }
   });
   socket.on("leaveServer", (serverId) => {
-    const poll=(socket.data as any).logPolls?.[serverId];if(poll)clearInterval(poll);
-    delete (socket.data as any).logPolls?.[serverId];
-    socket.leave(`server_${serverId}`);
-  });
-  socket.on("disconnect", () => {
-    for (const poll of Object.values((socket.data as any).logPolls || {})) clearInterval(poll as NodeJS.Timeout);
-    (socket.data as any).logPolls = {};
+    const requestedId = String(serverId || "");
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(requestedId)) return;
+    const poll=(socket.data as any).logPolls?.[requestedId];if(poll)clearInterval(poll);
+    socket.leave(`server_${requestedId}`);
   });
 });
 
@@ -113,17 +109,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 // oversized JSON/form body and exhaust server RAM before a single upload happened.
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use((_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=63072000");
-  next();
-});
-app.use(cors({
-  origin: process.env.PANEL_ORIGIN || true,
-  credentials: true,
-}));
+app.use(cors());
 app.get("/health", (_req, res) => res.json({ ok: true, service: "shironex-panel", timestamp: new Date().toISOString() }));
 
 import apiRoutes from "./src/server/routes/api.js";
