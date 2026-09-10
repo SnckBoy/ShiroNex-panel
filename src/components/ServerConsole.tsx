@@ -179,6 +179,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
   const [connected, setConnected] = useState(false);
+  const [accessDenied, setAccessDenied] = useState("");
   const [ready, setReady] = useState(false);
   const [filter, setFilter] = useState<LogFilter>("important");
   const [search, setSearch] = useState("");
@@ -263,9 +264,17 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
     sockRef.current = socket;
 
     socket.on("connect", () => {
+      setAccessDenied("");
       socket.emit("joinServer", serverId);
       setConnected(true);
       setLogs((p) => [...p, "[System] Connected to console stream."]);
+    });
+
+    socket.on("server_access_denied", (payload: { error?: string }) => {
+      const message = payload?.error || "You are not authorized to view this server console.";
+      setConnected(false);
+      setAccessDenied(message);
+      setLogs((p) => [...p, `[System Error] ${message}`].slice(-MAX_LOG_LINES));
     });
 
     socket.on("log", (data: string) => {
@@ -532,6 +541,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
                 <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                   <span className="hidden lg:block"><Clock /></span>
                   <ConnPill live={connected} />
+                  {accessDenied && <span role="alert" className="max-w-[180px] truncate text-[9px] font-medium text-rose-300" title={accessDenied}>Access denied</span>}
                   <div className="flex items-center gap-1 ml-1 pl-1 border-l border-white/10">
                     <button type="button" className="qx-window-control" onClick={clearLogs} title="Clear console" aria-label="Clear console"><Trash2 size={12} /></button>
                     <button type="button" className="qx-window-control" onClick={() => void copyLogs()} title={copied ? "Copied" : "Copy logs"} aria-label={copied ? "Logs copied" : "Copy logs"}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
