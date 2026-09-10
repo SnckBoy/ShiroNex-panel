@@ -37,6 +37,12 @@ const canManageServer = (req: Request, server: any) => {
   const user = (req as any).user;
   return user?.role === "admin" || user?.role === "owner" || server?.owner === user?.id;
 };
+const serverBasePath = (serverId: string) => path.resolve(process.cwd(), ".data", "servers", serverId);
+const resolveServerPath = (serverId: string, requestedPath: unknown) => {
+  const base = serverBasePath(serverId);
+  const target = path.resolve(base, String(requestedPath || ""));
+  return target === base || target.startsWith(`${base}${path.sep}`) ? target : null;
+};
 
 const ensureLocalWorkspaceFiles = async (server: any) => {
   if (!server?.containerId || String(server.nodeId || "local") !== "local") return;
@@ -668,11 +674,8 @@ export const getFiles = async (req: Request, res: Response) => {
     } catch(e:any){ return res.status(502).json({error:e.message}); }
   }
   await ensureLocalWorkspaceFiles(server);
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, dirPath);
-  
-  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const targetPath = resolveServerPath(id, dirPath);
+  if (!targetPath) return res.status(403).json({ error: "Invalid path" });
 
   try {
     const stats = await fs.stat(targetPath).catch(() => null);
@@ -707,8 +710,8 @@ export const uploadFile = async (req: Request, res: Response) => {
       const result = await nodeControl.writeBase64(remote, id, path.posix.join(dirPath, req.file.originalname), bytes.toString("base64"));
       return res.json({ success: true, remote: true, ...result });
     }
-    const targetPath = path.join(process.cwd(), ".data", "servers", id, dirPath);
-    if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) return res.status(403).json({ error: "Invalid path" });
+    const targetPath = resolveServerPath(id, dirPath);
+    if (!targetPath) return res.status(403).json({ error: "Invalid path" });
     await fs.ensureDir(targetPath);
     await fs.move(req.file.path, path.join(targetPath, path.basename(req.file.originalname)), { overwrite: true });
     return res.json({ success: true });
@@ -731,9 +734,9 @@ export const uploadChunk = async (req: Request, res: Response) => {
   const remote = await remoteForServer(server);
   try {
     if (remote) return res.json(await nodeControl.writeChunk(remote, id, relativePath, uploadId, offset, totalSize, content));
-    const baseDir = path.resolve(process.cwd(), ".data", "servers", id);
-    const target = path.resolve(baseDir, relativePath);
-    if (!target.startsWith(baseDir + path.sep)) return res.status(403).json({ error: "Invalid path" });
+    const baseDir = serverBasePath(id);
+    const target = resolveServerPath(id, relativePath);
+    if (!target) return res.status(403).json({ error: "Invalid path" });
     const tempDir = path.join(process.cwd(), ".data", "temp", "uploads", id);
     const temp = path.join(tempDir, `${uploadId}.part`);
     await fs.ensureDir(tempDir);
@@ -754,11 +757,8 @@ export const deleteFile = async (req: Request, res: Response) => {
   
   try {
     for (const filePath of filePaths) {
-      const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
-      
-      if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-        return res.status(403).json({ error: "Invalid path" });
-      }
+      const targetPath = resolveServerPath(id, filePath);
+      if (!targetPath) return res.status(403).json({ error: "Invalid path" });
       
       await fs.remove(targetPath);
     }
@@ -772,12 +772,9 @@ export const zipFiles = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { dirPath, fileNames, outputName } = req.body;
   
-  const baseDir = path.join(process.cwd(), ".data", "servers", id, dirPath);
-  const outZipPath = path.join(baseDir, outputName || "archive.zip");
-
-  if (!baseDir.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const baseDir = resolveServerPath(id, dirPath);
+  const outZipPath = resolveServerPath(id, path.join(String(dirPath || ""), String(outputName || "archive.zip")));
+  if (!baseDir || !outZipPath) return res.status(403).json({ error: "Invalid path" });
 
   try {
     const output = fs.createWriteStream(outZipPath);
@@ -794,8 +791,10 @@ export const zipFiles = async (req: Request, res: Response) => {
 
     archive.pipe(output);
 
+    if (!Array.isArray(fileNames)) return res.status(400).json({ error: "fileNames must be an array" });
     for (const name of fileNames) {
-      const filePath = path.join(baseDir, name);
+      const filePath = resolveServerPath(id, path.join(String(dirPath || ""), String(name)));
+      if (!filePath) return res.status(403).json({ error: "Invalid path" });
       const stat = await fs.stat(filePath);
       if (stat.isDirectory()) {
         archive.directory(filePath, name);
@@ -816,13 +815,9 @@ export const renameFile = async (req: Request, res: Response) => {
   const server=(await readJSON("servers.json")||[]).find((x:any)=>x.id===id); const remote=await remoteForServer(server);
   if(remote){try{return res.json(await nodeControl.files(remote,id,"rename",{oldPath,newPath}))}catch(e:any){return res.status(502).json({error:e.message})}}
 
-  const targetOldPath = path.join(process.cwd(), ".data", "servers", id, oldPath);
-  const targetNewPath = path.join(process.cwd(), ".data", "servers", id, newPath);
-
-  if (!targetOldPath.startsWith(path.join(process.cwd(), ".data", "servers", id)) ||
-      !targetNewPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const targetOldPath = resolveServerPath(id, oldPath);
+  const targetNewPath = resolveServerPath(id, newPath);
+  if (!targetOldPath || !targetNewPath) return res.status(403).json({ error: "Invalid path" });
 
   try {
     await fs.rename(targetOldPath, targetNewPath);
@@ -844,17 +839,28 @@ export const downloadFile = async (req: Request, res: Response) => {
   if (rawPaths.length === 0) {
     return res.status(400).json({ error: "No path specified" });
   }
-
-  const serverBaseDir = path.join(process.cwd(), ".data", "servers", id);
-
+  const server = (await readJSON("servers.json") || []).find((x: any) => x.id === id);
+  const remote = await remoteForServer(server);
+  if (remote) {
+    try {
+      const response: any = await nodeControl.download(remote, id, rawPaths);
+      const contentType = response.headers?.["content-type"];
+      const contentDisposition = response.headers?.["content-disposition"];
+      const contentLength = response.headers?.["content-length"];
+      if (contentType) res.setHeader("Content-Type", contentType);
+      if (contentDisposition) res.setHeader("Content-Disposition", contentDisposition);
+      if (contentLength) res.setHeader("Content-Length", contentLength);
+      response.data.pipe(res);
+      return;
+    } catch (e: any) {
+      return res.status(502).json({ error: e.message || "Remote download failed" });
+    }
+  }
   try {
     if (rawPaths.length === 1) {
       const singlePath = rawPaths[0];
-      const targetPath = path.join(serverBaseDir, singlePath);
-
-      if (!targetPath.startsWith(serverBaseDir)) {
-        return res.status(403).json({ error: "Invalid path" });
-      }
+      const targetPath = resolveServerPath(id, singlePath);
+      if (!targetPath) return res.status(403).json({ error: "Invalid path" });
 
       const stat = await fs.stat(targetPath);
       if (!stat.isDirectory()) {
@@ -877,8 +883,8 @@ export const downloadFile = async (req: Request, res: Response) => {
     archive.pipe(res);
 
     for (const relPath of rawPaths) {
-      const targetPath = path.join(serverBaseDir, relPath);
-      if (!targetPath.startsWith(serverBaseDir)) continue;
+      const targetPath = resolveServerPath(id, relPath);
+      if (!targetPath) continue;
       const itemName = path.basename(targetPath);
       const stat = await fs.stat(targetPath).catch(() => null);
       if (!stat) continue;
@@ -900,11 +906,8 @@ export const unzipFile = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { path: filePath } = req.body;
 
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
-  
-  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const targetPath = resolveServerPath(id, filePath);
+  if (!targetPath) return res.status(403).json({ error: "Invalid path" });
 
   try {
     const destDir = path.dirname(targetPath);
@@ -923,9 +926,8 @@ export const createFile = async (req: Request, res: Response) => {
   const remote = await remoteForServer(server);
   try {
     if (remote) return res.json(await nodeControl.files(remote, id, "write", { path: filePath, content: "" }));
-    const baseDir = path.join(process.cwd(), ".data", "servers", id);
-    const targetPath = path.join(baseDir, filePath);
-    if (!targetPath.startsWith(baseDir)) return res.status(403).json({ error: "Invalid path" });
+    const targetPath = resolveServerPath(id, filePath);
+    if (!targetPath) return res.status(403).json({ error: "Invalid path" });
     await fs.ensureDir(path.dirname(targetPath));
     await fs.writeFile(targetPath, "", "utf-8");
     return res.json({ success: true });
@@ -939,10 +941,8 @@ export const createDirectory = async (req: Request, res: Response) => {
   const { filePath } = req.body;
   const server=(await readJSON("servers.json")||[]).find((x:any)=>x.id===id); const remote=await remoteForServer(server);
   if(remote){try{return res.json(await nodeControl.files(remote,id,"mkdir",{path:filePath}))}catch(e:any){return res.status(502).json({error:e.message})}}
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
-  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const targetPath = resolveServerPath(id, filePath);
+  if (!targetPath) return res.status(403).json({ error: "Invalid path" });
   try {
     await fs.mkdir(targetPath, { recursive: true });
     res.json({ success: true });
@@ -957,11 +957,8 @@ export const saveFileContent = async (req: Request, res: Response) => {
   const server=(await readJSON("servers.json")||[]).find((x:any)=>x.id===id); const remote=await remoteForServer(server);
   if(remote){try{return res.json(await nodeControl.files(remote,id,"write",{path:filePath,content}))}catch(e:any){return res.status(502).json({error:e.message})}}
 
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
-
-  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const targetPath = resolveServerPath(id, filePath);
+  if (!targetPath) return res.status(403).json({ error: "Invalid path" });
 
   try {
     await fs.writeFile(targetPath, content, "utf-8");

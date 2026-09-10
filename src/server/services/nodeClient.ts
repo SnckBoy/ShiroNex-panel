@@ -23,11 +23,11 @@ const clientFor = (node: NodeRecord, timeout = defaultTimeout): AxiosInstance =>
   }
 });
 
-export const nodeRequest = async <T=any>(node: NodeRecord, method: string, path: string, data?: any, timeoutMs = defaultTimeout) => {
+export const nodeRequest = async <T=any>(node: NodeRecord, method: string, path: string, data?: any, timeoutMs = defaultTimeout, returnResponse = false, responseType?: "stream" | "arraybuffer") => {
   const c = clientFor(node, Math.max(3000, timeoutMs));
   try {
-    const response = await c.request<T>({ method, url: path, data });
-    return response.data;
+    const response = await c.request<T>({ method, url: path, data, responseType });
+    return returnResponse ? response : response.data;
   } catch (error: any) {
     const payload = error?.response?.data;
     const status = Number(error?.response?.status || error?.statusCode || 502);
@@ -103,5 +103,11 @@ export const nodeControl = {
   files: (n:NodeRecord,id:string,op:string,d:any) => nodeRequest(n,"POST",`/v1/servers/${id}/files/${op}`,normalizeFilePayload(d),60000),
   writeBase64: (n:NodeRecord,id:string,path:string,content:string) => nodeRequest(n,"POST",`/v1/servers/${id}/files/write-base64`,{path:normalizeRelativePath(path),content},120000),
   writeChunk: (n:NodeRecord,id:string,path:string,uploadId:string,offset:number,totalSize:number,content:string) => nodeRequest(n,"POST",`/v1/servers/${id}/files/write-chunk`,{path:normalizeRelativePath(path),uploadId,offset,totalSize,content},120000),
-  replaceBatch: (n:NodeRecord,id:string,files:Array<{path:string;content:string}>,confirmReplace=false) => nodeRequest(n,"POST",`/v1/servers/${id}/files/replace-batch`,{files:files.map((file)=>({...file,path:normalizeRelativePath(file.path,"" )})),confirmReplace},120000)
+  replaceBatch: (n:NodeRecord,id:string,files:Array<{path:string;content:string}>,confirmReplace=false) => nodeRequest(n,"POST",`/v1/servers/${id}/files/replace-batch`,{files:files.map((file)=>({...file,path:normalizeRelativePath(file.path,"" )})),confirmReplace},120000),
+  download: (n:NodeRecord,id:string,paths:string[]) => {
+    const query = paths.length === 1
+      ? `path=${encodeURIComponent(normalizeRelativePath(paths[0]))}`
+      : paths.map((value) => `paths=${encodeURIComponent(normalizeRelativePath(value))}`).join("&");
+    return nodeRequest(n, "GET", `/v1/servers/${id}/files/download?${query}`, undefined, 120000, true, "stream");
+  }
 };
