@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useSettings } from "../context/SettingsContext";
 import type {
   BoxGeometry,
   CanvasTexture,
@@ -30,6 +31,7 @@ type InfrastructureCoreProps = {
 type ThreeRuntime = typeof import("three");
 
 type BlockRecord = {
+  id: string | number;
   mesh: Mesh<BoxGeometry, MeshStandardMaterial>;
   base: { x: number; y: number; z: number };
   phase: number;
@@ -82,19 +84,33 @@ function createFallbackTexture(THREE: ThreeRuntime, color: number): CanvasTextur
 }
 
 export function InfrastructureCore({ servers, size = "hero", label = "Infrastructure Core", className = "" }: InfrastructureCoreProps) {
+  const settings = useSettings();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneHostRef = useRef<HTMLDivElement | null>(null);
   const [fallbackReason, setFallbackReason] = useState<string>(() => getFallbackReason());
   const [ready, setReady] = useState(false);
 
   const visibleServers = useMemo(() => servers.slice(0, 24), [servers]);
-  const blockServers = visibleServers.length ? visibleServers : [{ id: "empty", name: "No servers", status: "offline", load: 0 }];
+  const blockServers = useMemo(() => visibleServers.length ? visibleServers : [{ id: "empty", name: "No servers", status: "offline", load: 0 }], [visibleServers]);
+  const serversRef = useRef(blockServers);
+  serversRef.current = blockServers;
+  // Telemetry changes update materials in-place; only topology changes rebuild WebGL.
+  const topology = JSON.stringify(blockServers.map(server => server.id));
+  const reducedMotion = Boolean(settings?.reducedMotion);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setFallbackReason(current => reducedMotion || media.matches ? "reduced-motion" : current === "reduced-motion" ? getFallbackReason() : current);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [reducedMotion]);
 
   useEffect(() => {
     const host = sceneHostRef.current;
     const canvas = canvasRef.current;
     if (!host || !canvas || fallbackReason) return;
 
+    setReady(false);
     let disposed = false;
     let animationFrame = 0;
     let renderer: WebGLRenderer | undefined;
@@ -175,6 +191,11 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
           const blockProgress = Math.max(0, Math.min(1, (bootProgress - index * 0.035) / 0.45));
           block.mesh.scale.setScalar(Math.max(0.001, blockProgress));
           block.mesh.position.y = block.base.y + (1 - blockProgress) * 0.65;
+          const current = serversRef.current.find(server => server.id === block.id);
+          const color = HEALTH_COLORS[normalizeHealth(current?.status)];
+          block.mesh.material.color.setHex(color);
+          block.mesh.material.emissive.setHex(color);
+          block.load = clamp(current?.load ?? 0);
           const pulse = 0.78 + Math.sin(time * 0.002 + block.phase) * 0.12 + block.load / 100 * 0.14;
           block.mesh.material.emissiveIntensity = pulse;
         });
@@ -207,12 +228,11 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
         sharedGeometry = new THREE.BoxGeometry(0.82, 0.82, 0.82);
         const columns = size === "hero" ? 5 : 3;
         const spacing = 1.05;
-        blockServers.forEach((server, index) => {
+        serversRef.current.forEach((server, index) => {
           const health = normalizeHealth(server.status);
           const color = HEALTH_COLORS[health];
           const material = new THREE.MeshStandardMaterial({
             color,
-            map: createFallbackTexture(THREE, color),
             roughness: 0.34,
             metalness: 0.2,
             emissive: color,
@@ -232,7 +252,7 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
           mesh.position.set(base.x, base.y + 0.7, base.z);
           mesh.rotation.set(index * 0.17, index * 0.23, index * 0.11);
           root?.add(mesh);
-          blocks.push({ mesh, base, phase: index * 0.67, load: clamp(server.load ?? (health === "online" ? 42 : health === "warning" ? 73 : 4)) });
+          blocks.push({ id: server.id, mesh, base, phase: index * 0.67, load: clamp(server.load ?? (health === "online" ? 42 : health === "warning" ? 73 : 4)) });
         });
         resize();
         setReady(true);
@@ -278,7 +298,7 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
       renderer?.dispose();
       renderer = undefined;
     };
-  }, [blockServers, fallbackReason, size]);
+  }, [topology, fallbackReason, size]);
 
   const displayBlocks = visibleServers.length ? visibleServers : [{ id: "empty", name: "No servers", status: "offline", load: 0 }];
 
@@ -301,7 +321,7 @@ export function InfrastructureCore({ servers, size = "hero", label = "Infrastruc
             return <span key={server.id} className={`snx-core__fallback-block snx-core__fallback-block--${health}`} style={{ "--core-index": index, "--core-load": load } as CSSProperties} title={`${server.name ?? "Server"}: ${health}`} />;
           })}
         </div>
-        <div className="snx-core__hint">Drag to rotate · one block per server</div>
+        <div className="snx-core__hint">{fallbackReason ? "Low-power view · one block per server" : "Drag to rotate · one block per server"}</div>
       </div>
       <div className="snx-core__legend" aria-label="Core health legend">
         <span><i className="snx-health-dot snx-health-dot--online" /> Online</span>

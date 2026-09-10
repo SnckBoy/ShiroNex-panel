@@ -20,6 +20,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (path.startsWith('/servers/')) return 'Server Management';
     if (path === '/admin') return 'Admin control center';
     if (path === '/admin/servers') return 'Fleet';
+    if (path === '/nodes') return 'Node infrastructure';
+    if (path === '/allocations') return 'Network allocations';
+    if (path === '/cloudflare') return 'Cloudflare';
     if (path === '/settings') return 'Settings';
     if (path === '/api-keys') return 'API Keys';
     return '';
