@@ -43,6 +43,12 @@ const resolveServerPath = (serverId: string, requestedPath: unknown) => {
   const target = path.resolve(base, String(requestedPath || ""));
   return target === base || target.startsWith(`${base}${path.sep}`) ? target : null;
 };
+const backupBasePath = (serverId: string) => path.resolve(process.cwd(), ".data", "backups", serverId);
+const resolveBackupPath = (serverId: string, requestedPath: unknown) => {
+  const base = backupBasePath(serverId);
+  const target = path.resolve(base, String(requestedPath || ""));
+  return target === base || target.startsWith(`${base}${path.sep}`) ? target : null;
+};
 
 const ensureLocalWorkspaceFiles = async (server: any) => {
   if (!server?.containerId || String(server.nodeId || "local") !== "local") return;
@@ -986,7 +992,7 @@ export const saveFileContent = async (req: Request, res: Response) => {
 
 export const getBackups = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const backupsDir = path.join(process.cwd(), ".data", "backups", id);
+  const backupsDir = backupBasePath(id);
   await fs.ensureDir(backupsDir);
 
   try {
@@ -994,7 +1000,9 @@ export const getBackups = async (req: Request, res: Response) => {
     const backups = [];
     for (const file of files) {
       if (file.endsWith(".zip")) {
-        const stats = await fs.stat(path.join(backupsDir, file));
+        const backupPath = resolveBackupPath(id, file);
+        if (!backupPath) continue;
+        const stats = await fs.stat(backupPath);
         backups.push({
           filename: file,
           size: stats.size,
@@ -1011,8 +1019,8 @@ export const getBackups = async (req: Request, res: Response) => {
 
 export const createBackup = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const serverDir = path.join(process.cwd(), ".data", "servers", id);
-  const backupsDir = path.join(process.cwd(), ".data", "backups", id);
+  const serverDir = serverBasePath(id);
+  const backupsDir = backupBasePath(id);
   await fs.ensureDir(backupsDir);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -1047,12 +1055,8 @@ export const createBackup = async (req: Request, res: Response) => {
 
 export const downloadBackup = async (req: Request, res: Response) => {
   const { id, filename } = req.params;
-  const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
-
-  // basic path traversal prevention
-  if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
-    return res.status(403).send("Invalid path");
-  }
+  const backupPath = resolveBackupPath(id, filename);
+  if (!backupPath) return res.status(403).send("Invalid path");
 
   if (await fs.pathExists(backupPath)) {
     res.download(backupPath);
@@ -1063,11 +1067,8 @@ export const downloadBackup = async (req: Request, res: Response) => {
 
 export const deleteBackup = async (req: Request, res: Response) => {
   const { id, filename } = req.params;
-  const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
-
-  if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
+  const backupPath = resolveBackupPath(id, filename);
+  if (!backupPath) return res.status(403).json({ error: "Invalid path" });
 
   try {
     await fs.remove(backupPath);
