@@ -771,7 +771,14 @@ export const deleteFile = async (req: Request, res: Response) => {
 export const zipFiles = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { dirPath, fileNames, outputName } = req.body;
-  
+  const remote = await remoteForServer((req as any).server);
+  if (remote) {
+    try {
+      return res.json(await nodeControl.files(remote, id, "zip", { dirPath, fileNames, outputName }));
+    } catch (e: any) {
+      return res.status(502).json({ error: e.message || "Remote archive failed" });
+    }
+  }
   const baseDir = resolveServerPath(id, dirPath);
   const outZipPath = resolveServerPath(id, path.join(String(dirPath || ""), String(outputName || "archive.zip")));
   if (!baseDir || !outZipPath) return res.status(403).json({ error: "Invalid path" });
@@ -905,7 +912,14 @@ export const downloadFile = async (req: Request, res: Response) => {
 export const unzipFile = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { path: filePath } = req.body;
-
+  const remote = await remoteForServer((req as any).server);
+  if (remote) {
+    try {
+      return res.json(await nodeControl.files(remote, id, "unzip", { path: filePath }));
+    } catch (e: any) {
+      return res.status(502).json({ error: e.message || "Remote extraction failed" });
+    }
+  }
   const targetPath = resolveServerPath(id, filePath);
   if (!targetPath) return res.status(403).json({ error: "Invalid path" });
 

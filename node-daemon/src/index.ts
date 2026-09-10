@@ -6,6 +6,7 @@ import Docker from "dockerode";
 import crypto from "crypto";
 import https from "https";
 import * as archiverModule from "archiver";
+import yauzl from "yauzl";
 const archiver: any = (archiverModule as any).default || archiverModule;
 
 const cfgPath = process.env.SHIRONEX_CONFIG || "/etc/shironex-node/config.json";
@@ -54,6 +55,54 @@ const safePath = (serverId: string, rel: string) => {
   if (realProbe !== realBase && !realProbe.startsWith(realBase + path.sep)) throw new Error("Symlink escapes server directory");
   return target;
 };
+const extractZipSafely = (archivePath: string, destination: string) => new Promise<void>((resolve, reject) => {
+  yauzl.open(archivePath, { lazyEntries: true, validateEntrySizes: true }, (openError, zipFile) => {
+    if (openError || !zipFile) return reject(openError || new Error("Unable to open ZIP archive"));
+    let settled = false;
+    const fail = (error: any) => {
+      if (settled) return;
+      settled = true;
+      zipFile.close();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    zipFile.on("error", fail);
+    zipFile.on("end", () => { if (!settled) { settled = true; resolve(); } });
+    zipFile.on("entry", (entry) => {
+      if (settled) return;
+      try {
+        const entryName = String(entry.fileName || "").replace(/\\/g, "/");
+        const normalized = path.posix.normalize(entryName);
+        if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/")) throw new Error("ZIP entry escapes the server directory");
+        const unixMode = (entry.externalFileAttributes >>> 16) & 0xffff;
+        if ((unixMode & 0o170000) === 0o120000) throw new Error("ZIP symlink entries are not allowed");
+        const base = path.resolve(destination);
+        const target = path.resolve(base, normalized);
+        if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new Error("ZIP entry escapes the server directory");
+        let probe = path.dirname(target);
+        while (probe !== base && probe.startsWith(`${base}${path.sep}`)) {
+          if (fs.existsSync(probe) && fs.lstatSync(probe).isSymbolicLink()) throw new Error("ZIP destination contains a symlink");
+          probe = path.dirname(probe);
+        }
+        if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) throw new Error("ZIP destination is a symlink");
+        if (entryName.endsWith("/")) {
+          fs.mkdirSync(target, { recursive: true, mode: 0o750 });
+          zipFile.readEntry();
+          return;
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o750 });
+        zipFile.openReadStream(entry, (streamError, stream) => {
+          if (streamError || !stream) return fail(streamError || new Error("Unable to read ZIP entry"));
+          const output = fs.createWriteStream(target, { flags: "w", mode: 0o640 });
+          output.on("error", fail);
+          output.on("close", () => { if (!settled) zipFile.readEntry(); });
+          stream.on("error", fail);
+          stream.pipe(output);
+        });
+      } catch (error) { fail(error); }
+    });
+    zipFile.readEntry();
+  });
+});
 let prevCpu: { idle: number; total: number } | null = null;
 const cpu = () => {
   const c = os.cpus(); let idle = 0, total = 0;
@@ -108,6 +157,22 @@ app.post("/v1/servers/:id/files/replace-batch",auth,async(req,res)=>{try{const b
 app.post("/v1/servers/:id/files/mkdir",auth,async(req,res)=>{try{fs.mkdirSync(safePath(req.params.id,req.body.path),{recursive:true});res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/v1/servers/:id/files/rename",auth,async(req,res)=>{try{fs.renameSync(safePath(req.params.id,req.body.oldPath),safePath(req.params.id,req.body.newPath));res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/v1/servers/:id/files/delete",auth,async(req,res)=>{try{for(const p of req.body.paths||[])fs.rmSync(safePath(req.params.id,p),{recursive:true,force:true});res.json({success:true})}catch(e:any){res.status(400).json({error:e.message})}});
+app.post("/v1/servers/:id/files/zip",auth,async(req,res)=>{
+ try {
+  const id=safeId(req.params.id); const dir=safePath(id,req.body?.dirPath||"."); const names=Array.isArray(req.body?.fileNames)?req.body.fileNames:[]; const outputName=String(req.body?.outputName||"archive.zip");
+  if(!names.length||names.length>1000||!/^[a-zA-Z0-9._-]+\\.zip$/i.test(outputName)) throw new Error("Invalid archive request");
+  if(!fs.statSync(dir).isDirectory()) throw new Error("Archive directory not found");
+  const output=safePath(id,path.join(path.relative(path.resolve(serversDir,id),dir),outputName));
+  const archive=archiver("zip",{zlib:{level:6}}); const stream=fs.createWriteStream(output,{mode:0o640});
+  const done=new Promise<void>((resolve,reject)=>{stream.on("close",()=>resolve());stream.on("error",reject);archive.on("error",reject)}); archive.pipe(stream);
+  for(const name of names){const source=safePath(id,path.join(path.relative(path.resolve(serversDir,id),dir),String(name)));const stat=fs.statSync(source);if(stat.isDirectory())archive.directory(source,String(name));else archive.file(source,{name:String(name)})}
+  await archive.finalize(); await done; res.json({success:true,filename:outputName});
+ } catch(e:any){res.status(400).json({error:e.message||"Archive failed"})}
+});
+app.post("/v1/servers/:id/files/unzip",auth,async(req,res)=>{
+  try { const id=safeId(req.params.id); const archivePath=safePath(id,req.body?.path); const stat=fs.statSync(archivePath); if(!stat.isFile()||!String(archivePath).toLowerCase().endsWith(".zip")) throw new Error("A ZIP archive is required"); await extractZipSafely(archivePath,path.dirname(archivePath)); res.json({success:true}); }
+ catch(e:any){res.status(400).json({error:e.message||"Extraction failed"})}
+});
 app.get("/v1/servers/:id/files/download",auth,async(req,res)=>{
  try {
   const raw = req.query.paths ? (Array.isArray(req.query.paths) ? req.query.paths : [req.query.paths]) : (req.query.path ? [req.query.path] : []);
