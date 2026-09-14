@@ -49,7 +49,6 @@ const FILTERS: { key: LogFilter; label: string }[] = [
 ═══════════════════════════════════════════════════════ */
 
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 ::selection { background: rgba(99,102,241,.25); }
 .qx-display { font-family: 'Inter', system-ui, sans-serif; }
 .qx-mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
@@ -175,6 +174,9 @@ function ResourceStatus({ snapshot }: { snapshot: ReturnType<typeof normalizeTel
 
 export default function ServerConsole({ serverId, server, actionNotice }: ServerConsoleProps) {
   const [logs, setLogs] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+  const pendingLogs = useRef<string[]>([]);
   const [command, setCommand] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
@@ -219,42 +221,43 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
   useEffect(() => {
     let mounted = true;
-    setLogs([]);
-    setAtBottom(true);
-    const loadHistoricalLogs = async () => {
-      try {
-        const response = await axios.get(`/api/servers/${serverId}/logs`);
-        const text = typeof response.data?.logs === "string" ? response.data.logs : "";
-        if (mounted && text.trim()) {
-          setLogs(text.split(/\r?\n/).filter((line: string) => line.trim()).slice(-MAX_LOG_LINES));
-        }
-      } catch {
-        // Live streaming can still connect when historical logs are unavailable.
-      }
-    };
-    void loadHistoricalLogs();
-    return () => { mounted = false; };
-  }, [serverId]);
-
-  useEffect(() => {
-    let mounted = true;
+    let inFlight = false;
+    const controller = new AbortController();
+    setResourceSnapshot(normalizeTelemetry(null));
     const loadResources = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
       try {
-        const response = await axios.get(`/api/servers/${serverId}/stats`);
-        if (mounted) setResourceSnapshot((previous) => normalizeTelemetry(response.data, previous, Date.now()));
+        const response = await axios.get(`/api/servers/${serverId}/stats`, { signal: controller.signal, timeout: 20000 });
+        if (mounted) setResourceSnapshot(previous => normalizeTelemetry(response.data, previous, Date.now()));
       } catch {
-        if (mounted) setResourceSnapshot((previous) => normalizeTelemetry({ available: false }, previous, Date.now()));
-      }
+        if (mounted) setResourceSnapshot(previous => normalizeTelemetry({ available: false }, previous, Date.now()));
+      } finally { inFlight = false; }
     };
     void loadResources();
     const timer = window.setInterval(loadResources, STATS_POLL_MS);
-    return () => { mounted = false; window.clearInterval(timer); };
+    document.addEventListener("visibilitychange", loadResources);
+    return () => { mounted = false; controller.abort(); window.clearInterval(timer); document.removeEventListener("visibilitychange", loadResources); };
   }, [serverId]);
 
   /* ── Socket stream ── */
   useEffect(() => {
+    setLogs([]);
+    pendingLogs.current = [];
+    setCommand("");
+    setCmdHistory([]);
+    setHistIdx(-1);
+    setAccessDenied("");
+    setConnected(false);
+    setAtBottom(true);
     if (!token || !serverId) return;
-
+    // Batch bursts instead of rerendering on every socket packet.
+    const flush = window.setInterval(() => {
+      if (!pendingLogs.current.length) return;
+      const lines = pendingLogs.current;
+      pendingLogs.current = [];
+      setLogs(previous => [...previous, ...lines].slice(-MAX_LOG_LINES));
+    }, 100);
     const socket: Socket = io({
       auth: { token },
       transports: ["websocket", "polling"],
@@ -266,8 +269,11 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
     socket.on("connect", () => {
       setAccessDenied("");
       socket.emit("joinServer", serverId);
+    });
+
+    socket.on("server_joined", () => {
       setConnected(true);
-      setLogs((p) => [...p, "[System] Connected to console stream."]);
+      setLogs(p => [...p, "[System] Connected to authorized console stream."].slice(-MAX_LOG_LINES));
     });
 
     socket.on("server_access_denied", (payload: { error?: string }) => {
@@ -279,12 +285,8 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
     socket.on("log", (data: string) => {
       if (typeof data !== "string") return;
-      const lines = data.split(/\r?\n/).filter((l) => l.trim());
-
-      setLogs((prev) => {
-        const next = [...prev, ...lines];
-        return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
-      });
+      const lines = data.split(/\r?\n/).filter(line => line.trim()).slice(-MAX_LOG_LINES).map(line => line.slice(0, 10000));
+      pendingLogs.current = [...pendingLogs.current, ...lines].slice(-MAX_LOG_LINES);
     });
 
     socket.on("disconnect", (r: string) => {
@@ -293,6 +295,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
     });
 
     socket.on("clear_logs", () => {
+      pendingLogs.current = [];
       setLogs([]);
     });
 
@@ -302,6 +305,8 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
     });
 
     return () => {
+      window.clearInterval(flush);
+      pendingLogs.current = [];
       socket.emit("leaveServer", serverId);
       socket.removeAllListeners();
       socket.disconnect();
@@ -312,7 +317,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   /* ── Auto-scroll (respects user scroll position) ── */
   useEffect(() => {
     if (atBottom && bodyRef.current) {
-      bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
   }, [logs, atBottom]);
 
@@ -325,11 +330,12 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   }, []);
 
   const jumpToBottom = useCallback(() => {
-    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "auto" });
     setAtBottom(true);
   }, []);
 
   const clearLogs = useCallback(() => {
+    pendingLogs.current = [];
     setLogs([]);
     setAtBottom(true);
   }, []);
@@ -362,7 +368,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
   /* ── "/" focuses the command line ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && (e.target as HTMLElement).tagName !== "INPUT") {
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !(e.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) {
         e.preventDefault();
         inputRef.current?.focus();
       }
@@ -376,7 +382,9 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
     async (e: React.FormEvent) => {
       e.preventDefault();
       const cmd = command.trim();
-      if (!cmd) return;
+      if (!cmd || serverOffline || accessDenied || sendingRef.current) return;
+      sendingRef.current = true;
+      setSending(true);
       setCommand("");
       setCmdHistory((h) => [cmd, ...h].slice(0, 50));
       setHistIdx(-1);
@@ -386,15 +394,19 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
         return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
       });
       try {
-        await axios.post(`/api/servers/${serverId}/command`, { command: cmd });
+        await axios.post(`/api/servers/${serverId}/command`, { command: cmd }, { timeout: 20000 });
       } catch (err: any) {
         setLogs((p) => {
-          const next = [...p, `[System Error] Failed to send command: ${err.message}`];
+          const next = [...p, `[System Error] Failed to send command: ${err.response?.data?.error || err.message}`];
           return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
         });
+        setCommand(current => current || cmd);
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
       }
     },
-    [command, serverId]
+    [command, serverId, serverOffline, accessDenied]
   );
 
   /* ── Command history: ↑ / ↓ ── */
@@ -637,7 +649,7 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
               >
                 <div className="snx-command-input qx-input-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 transition-all duration-300 min-w-0">
                   <span className="text-emerald-400/80 qx-mono text-xs mr-1.5 sm:mr-3 select-none font-semibold whitespace-nowrap shrink-0">
-                    <span className="hidden sm:inline">admin@node:~$</span>
+                    <span className="hidden sm:inline">server&gt;</span>
                     <span className="sm:hidden">&gt;</span>
                   </span>
                   <input
@@ -661,11 +673,11 @@ export default function ServerConsole({ serverId, server, actionNotice }: Server
 
                 <button
                   type="submit"
-                                      disabled={!command.trim() || serverOffline}
+                                      disabled={!command.trim() || serverOffline || Boolean(accessDenied) || sending}
                     title={serverOffline ? "Start the server before sending commands" : "Execute command"}
                     className="snx-execute-button qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
                 >
-                  Execute
+                  {sending ? "Sending…" : "Execute"}
                 </button>
               </form>
               {serverOffline && <p className="px-3 pb-3 text-[11px] text-amber-200/70">The server is offline. Start it before sending console commands.</p>}

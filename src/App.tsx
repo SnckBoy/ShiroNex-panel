@@ -3,31 +3,31 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from "react";
+import React, { lazy, Suspense, useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Setup from "./pages/Setup";
-import Dashboard from "./pages/Dashboard";
-import ServerList from "./pages/ServerList";
-import CreateServer from "./pages/CreateServer";
-import ServerView from "./pages/ServerView";
-import SettingsPage from "./pages/SettingsPage";
-import ApiKeysPage from "./pages/ApiKeysPage";
-import AdminServers from "./pages/AdminServers";
-import PlayitTunnel from "./pages/PlayitTunnel";
-import Nodes from "./pages/Nodes";
-import Allocations from "./pages/Allocations";
-import Cloudflare from "./pages/Cloudflare";
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Setup = lazy(() => import("./pages/Setup"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ServerList = lazy(() => import("./pages/ServerList"));
+const CreateServer = lazy(() => import("./pages/CreateServer"));
+const ServerView = lazy(() => import("./pages/ServerView"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const ApiKeysPage = lazy(() => import("./pages/ApiKeysPage"));
+const AdminServers = lazy(() => import("./pages/AdminServers"));
+const PlayitTunnel = lazy(() => import("./pages/PlayitTunnel"));
+const Nodes = lazy(() => import("./pages/Nodes"));
+const Allocations = lazy(() => import("./pages/Allocations"));
+const Cloudflare = lazy(() => import("./pages/Cloudflare"));
 import Layout from "./components/Layout";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { SettingsProvider, useSettings } from "./context/SettingsContext";
 import { GlobalBackground } from "./components/GlobalBackground";
 import { SystemUpdateListener } from "./components/SystemUpdateListener";
 import { TutorialOverlay } from "./components/TutorialOverlay";
-import CoreCheckpoint from "./pages/CoreCheckpoint";
-import AdminDashboard from "./pages/AdminDashboard";
+const CoreCheckpoint = lazy(() => import("./pages/CoreCheckpoint"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading, setupRequired } = useAuth();
@@ -69,6 +69,7 @@ const AnimatedRoutes = () => {
         transition={{ duration: 0.3 }}
         className="h-full w-full flex flex-col"
       >
+        <Suspense fallback={<div role="status" className="snx-route-loading"><span className="snx-live-dot" /> Loading workspace…</div>}>
         <Routes location={location}>
           <Route path="/setup" element={<Setup />} />
           <Route path="/core-checkpoint" element={<CoreCheckpoint />} />
@@ -85,7 +86,9 @@ const AnimatedRoutes = () => {
           <Route path="/api-keys" element={<ProtectedRoute><AdminOnlyRoute><ApiKeysPage /></AdminOnlyRoute></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminOnlyRoute><AdminDashboard /></AdminOnlyRoute></ProtectedRoute>} />
           <Route path="/admin/servers" element={<ProtectedRoute><AdminOnlyRoute><AdminServers /></AdminOnlyRoute></ProtectedRoute>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </motion.div>
     </AnimatePresence>
   );
@@ -137,15 +140,22 @@ const TutorialManager = () => {
   return <TutorialOverlay onComplete={handleTutorialComplete} panelName={panelName} />;
 };
 
+function PanelExperience() {
+  const { reducedMotion } = useSettings();
+  return <MotionConfig reducedMotion={reducedMotion ? "always" : "user"}>
+    <GlobalBackground />
+    <AnimatedRoutes />
+    <TutorialManager />
+  </MotionConfig>;
+}
+
 export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
         <SystemUpdateListener />
         <Router>
-          <GlobalBackground />
-          <AnimatedRoutes />
-          <TutorialManager />
+          <PanelExperience />
         </Router>
       </AuthProvider>
     </SettingsProvider>
