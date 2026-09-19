@@ -111,7 +111,7 @@ Example:
 
 ```text
 Panel VPS
-  ├── Germany Node 1
+  ├── Nepal Node 1
   ├── Singapore Node 1
   ├── India Node 1
   └── US Node 1
