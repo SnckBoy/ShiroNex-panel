@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import axios from "axios";
-import { Activity, CheckCircle2, ClipboardList, Cpu, HardDrive, Pencil, Plus, Power, RefreshCw, RotateCw, Server, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { Activity, CheckCircle2, ClipboardList, Cpu, HardDrive, Pencil, Plus, Power, RefreshCw, RotateCw, Server, ShieldCheck, Trash2, Wrench, Search } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const staffRoles = ["admin", "owner"];
@@ -38,6 +38,11 @@ const endpointLabel = (node: any) => {
 
 export default function Nodes() {
   const { user } = useAuth();
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const loadController = useRef<AbortController | null>(null);
   const [nodes, setNodes] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<any>(null);
@@ -47,26 +52,48 @@ export default function Nodes() {
   const [notice, setNotice] = useState("");
   const [health, setHealth] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "8080", sftpPort: "2022", location: "", visibility: "public" as "public" | "private", tls: false, tlsVerify: true, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false, cloudflareAccessClientId: "", cloudflareAccessClientSecret: "" });
+  const [form, setForm] = useState({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "6768", sftpPort: "2022", location: "", visibility: "public" as "public" | "private", tls: false, tlsVerify: true, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false, cloudflareAccessClientId: "", cloudflareAccessClientSecret: "" });
 
   const formFromNode = (node: any) => ({
-    name: String(node.name || ""), description: String(node.description || ""), hostname: String(node.hostname || node.fqdn || node.publicIp || ""), fqdn: String(node.fqdn || node.hostname || ""), publicIp: String(node.publicIp || ""), apiPort: String(node.apiPort || "8080"), sftpPort: String(node.sftpPort || "2022"), location: String(node.location || ""), visibility: node.visibility === "private" ? "private" as const : "public" as const, tls: node.tls !== false, tlsVerify: node.tlsVerify !== false, behindProxy: Boolean(node.behindProxy), memory: String(node.memory || ""), memoryOverallocate: String(node.memoryOverallocate ?? "0"), disk: String(node.disk || ""), diskOverallocate: String(node.diskOverallocate ?? "0"), cpu: String(node.cpu || ""), serverDirectory: String(node.serverDirectory || "/var/lib/shironex/servers"), cloudflareZoneId: String(node.cloudflareZoneId || ""), createCloudflareDns: false, cloudflareAccessClientId: String(node.cloudflareAccessClientId || ""), cloudflareAccessClientSecret: ""
+    name: String(node.name || ""), description: String(node.description || ""), hostname: String(node.hostname || node.fqdn || node.publicIp || ""), fqdn: String(node.fqdn || node.hostname || ""), publicIp: String(node.publicIp || ""), apiPort: String(node.apiPort || "6768"), sftpPort: String(node.sftpPort || "2022"), location: String(node.location || ""), visibility: node.visibility === "private" ? "private" as const : "public" as const, tls: node.tls !== false, tlsVerify: node.tlsVerify !== false, behindProxy: Boolean(node.behindProxy), memory: String(node.memory || ""), memoryOverallocate: String(node.memoryOverallocate ?? "0"), disk: String(node.disk || ""), diskOverallocate: String(node.diskOverallocate ?? "0"), cpu: String(node.cpu || ""), serverDirectory: String(node.serverDirectory || "/var/lib/shironex/servers"), cloudflareZoneId: String(node.cloudflareZoneId || ""), createCloudflareDns: false, cloudflareAccessClientId: String(node.cloudflareAccessClientId || ""), cloudflareAccessClientSecret: ""
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (loadController.current) return;
+    const controller = new AbortController();
+    loadController.current = controller;
+    setLoading(true);
     try {
-      setNodes((await axios.get("/api/nodes")).data);
-      setError("");
+      const response = await axios.get("/api/nodes", { signal: controller.signal, timeout: 20000 });
+      if (controller.signal.aborted) return;
+      if (!Array.isArray(response.data)) throw new Error("Invalid node inventory response");
+      setNodes(response.data);
+      setLoadError("");
     } catch (requestError: any) {
-      setError(requestErrorMessage(requestError, "Unable to load nodes."));
+      if (!controller.signal.aborted) setLoadError(requestErrorMessage(requestError, "Unable to load nodes."));
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+      if (loadController.current === controller) loadController.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
+    if (!staffRoles.includes(user?.role || "")) return;
     void load();
-    const timer = window.setInterval(() => void load(), 10000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const refresh = () => { if (!document.hidden) void load(); };
+    const timer = window.setInterval(refresh, 10000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      loadController.current?.abort();
+      loadController.current = null;
+    };
+  }, [load, user?.role]);
+  const filteredNodes = useMemo(() => nodes.filter(node =>
+    (statusFilter === "all" || (statusFilter === "online" ? node.status === "ONLINE" : node.status !== "ONLINE")) &&
+    `${node.name} ${node.hostname} ${node.fqdn} ${node.publicIp} ${node.location}`.toLowerCase().includes(query.toLowerCase())
+  ), [nodes, query, statusFilter]);
 
   if (!staffRoles.includes(user?.role || "")) return <div className="p-10 text-center">You do not have permission to manage nodes.</div>;
 
@@ -93,7 +120,7 @@ export default function Nodes() {
   const openCreate = () => {
     setEditingNode(null);
     setRestartAfterEdit(false);
-    setForm({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "8080", sftpPort: "2022", location: "", visibility: "public", tls: false, tlsVerify: true, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false, cloudflareAccessClientId: "", cloudflareAccessClientSecret: "" });
+    setForm({ name: "", description: "", hostname: "", fqdn: "", publicIp: "", apiPort: "6768", sftpPort: "2022", location: "", visibility: "public", tls: false, tlsVerify: true, behindProxy: false, memory: "", memoryOverallocate: "0", disk: "", diskOverallocate: "0", cpu: "", serverDirectory: "/var/lib/shironex/servers", cloudflareZoneId: "", createCloudflareDns: false, cloudflareAccessClientId: "", cloudflareAccessClientSecret: "" });
     setOpen(true);
   };
 
@@ -112,7 +139,10 @@ export default function Nodes() {
       if (editingNode && !form.cloudflareAccessClientSecret) delete payload.cloudflareAccessClientSecret;
       const nodeBeingEdited = editingNode;
       const response = nodeBeingEdited ? await axios.patch(`/api/nodes/${nodeBeingEdited.id}`, payload) : await axios.post("/api/nodes", payload);
-      if (nodeBeingEdited && restartAfterEdit) await axios.post(`/api/nodes/${nodeBeingEdited.id}/restart`);
+      if (nodeBeingEdited && restartAfterEdit) {
+        try { await axios.post(`/api/nodes/${nodeBeingEdited.id}/restart`); }
+        catch (restartError) { setError(requestErrorMessage(restartError, "Restart failed") + " Settings were saved. Test health and retry the restart separately."); }
+      }
       if (!nodeBeingEdited) setCreated(response.data);
       setOpen(false);
       setEditingNode(null);
@@ -162,31 +192,40 @@ export default function Nodes() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-4 md:p-6">
+    <div className="snx-nodes-page mx-auto max-w-7xl">
       <header className="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="snx-eyebrow"><Activity className="h-3.5 w-3.5" /> Infrastructure control</p>
-          <h1 className="snx-page-title">Snck Nodes</h1>
+          <h1 className="snx-page-title">Node infrastructure</h1>
           <p className="snx-page-subtitle">Authenticated daemons, real heartbeat age, Docker health, and maintenance controls.</p>
         </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => void load()} className="snx-icon-button" aria-label="Refresh nodes"><RefreshCw className="h-4 w-4" /></button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void load()} disabled={loading} className="snx-icon-button" aria-label="Refresh nodes"><RefreshCw className="h-4 w-4" /></button>
           <button type="button" disabled={busy !== null} onClick={() => void createLocalNode()} className="snx-secondary-button"><Server className="h-4 w-4" /> Create Local Node</button>
           <button type="button" onClick={openCreate} className="snx-primary-button"><Plus className="h-4 w-4" /> Create Node</button>
         </div>
       </header>
 
+      {loadError && <div role="alert" className="snx-data-notice">{loadError} Last received inventory is retained.</div>}
       {error && <div role="alert" className="mb-5 rounded-xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm text-rose-200">{error}</div>}
       {notice && <div role="status" className="mb-5 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-200">{notice}</div>}
       {created && <div className="mb-6 rounded-2xl border border-emerald-400/25 bg-emerald-400/10 p-5"><div className="flex items-center gap-2 font-semibold text-emerald-200"><ShieldCheck className="h-4 w-4" /> Node created — one-time setup command</div><p className="mt-2 text-xs text-muted-foreground">The token expires in 15 minutes and is not stored in plaintext. Run this command as root on the target VPS.</p><pre className="mt-3 overflow-auto rounded-xl bg-black/60 p-4 text-xs text-emerald-300">curl -fsSL {location.origin}/node.sh | sudo bash -s -- --panel {location.origin} --node-id {created.id} --setup-token {created.setupToken} --port {created.apiPort}</pre><button type="button" onClick={() => setCreated(null)} className="mt-3 text-sm text-emerald-200 underline">Close</button></div>}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {nodes.map((node) => {
+      <section className="snx-node-summary" aria-label="Node summary">
+        {[['Registered nodes', nodes.length, Server], ['Online', nodes.filter(node => node.status === 'ONLINE').length, Activity], ['Needs attention', nodes.filter(node => node.status !== 'ONLINE').length, Wrench]].map(([label, value, Icon]: any) => <div key={label}><Icon size={18} /><span>{label}</span><strong>{value}</strong></div>)}
+      </section>
+      <div className="snx-inventory-toolbar">
+        <label className="snx-search-field"><Search size={16} /><input aria-label="Search nodes" placeholder="Search name, address, or location…" value={query} onChange={event => setQuery(event.target.value)} /></label>
+        <div className="snx-filter-tabs" aria-label="Filter nodes">{[['all', 'All nodes'], ['online', 'Online'], ['attention', 'Needs attention']].map(([key, label]) => <button key={key} aria-pressed={statusFilter === key} onClick={() => setStatusFilter(key)}>{label}</button>)}</div>
+      </div>
+      {filteredNodes.length === 0 && <div className="snx-empty-state" role="status"><Server size={28} /><strong>{loading ? "Loading node inventory…" : loadError ? "Node inventory unavailable" : nodes.length ? "No matching nodes" : "Connect your first node"}</strong><span>{nodes.length ? "Try another search or status filter." : "Create a node to get its secure, one-time installation command."}</span></div>}
+      <div className="grid gap-4 lg:grid-cols-2" aria-busy={loading}>
+        {filteredNodes.map((node) => {
           const stats = node.lastStats || {};
           const nodeHealth = health[node.id];
           const isMaintenance = Boolean(node.maintenance);
           return (
-            <article key={node.id} className="snx-console-surface rounded-2xl p-5 transition hover:-translate-y-0.5 md:p-6">
+            <article key={node.id} className="snx-node-card snx-console-surface rounded-2xl p-5 md:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 gap-3">
                   <div className="snx-brand-mark h-11 w-11"><Server className="h-5 w-5" /></div>
@@ -222,12 +261,12 @@ export default function Nodes() {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-label={editingNode ? "Edit node" : "Create node"} className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="mx-auto my-6 grid max-w-5xl gap-4 rounded-3xl border border-cyan-300/20 bg-slate-900/95 p-4 shadow-2xl shadow-cyan-950/30 md:p-6 lg:grid-cols-[1fr_1.08fr]">
             <section className="rounded-2xl border border-white/10 bg-black/15 p-4 md:p-5">
               <p className="snx-eyebrow"><Server className="h-3.5 w-3.5" /> Basic details</p>
               <h2 className="mt-2 text-2xl font-semibold">{editingNode ? "Edit node settings" : "Create a new node"}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{editingNode ? "Update the endpoint, proxy mode, resources, and runtime paths. The existing node credential is preserved." : "Create the panel record first. Snck will then generate a one-time token and installation command for the target VPS."}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{editingNode ? "Update the endpoint, proxy mode, resources, and runtime paths. The existing node credential is preserved." : "Create the panel record first. ShiroNex will then generate a one-time token and installation command for the target VPS."}</p>
               <div className="mt-5 space-y-3">
                 <label className="block text-xs font-medium text-muted-foreground">Node name<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Production Node 01" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
                 <label className="block text-xs font-medium text-muted-foreground">Description<textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Primary Minecraft workloads" rows={3} className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
@@ -241,10 +280,11 @@ export default function Nodes() {
               <p className="snx-eyebrow"><Wrench className="h-3.5 w-3.5" /> Configuration</p>
               <h3 className="mt-2 text-lg font-semibold">Daemon resources</h3>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {([['memory','Total memory (MB)','8192'],['memoryOverallocate','Memory over-allocation (%)','0'],['disk','Total disk (GB)','100'],['diskOverallocate','Disk over-allocation (%)','0'],['cpu','CPU limit (%)','100'],['apiPort','Daemon port','8080'],['sftpPort','Daemon SFTP port','2022']] as const).map(([key, label, placeholder]) => <label key={key} className="block text-xs font-medium text-muted-foreground">{label}<input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} inputMode="numeric" min={key.includes('Overallocate') ? -1 : 1} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>)}
+                {([['memory','Total memory (MB)','8192'],['memoryOverallocate','Memory over-allocation (%)','0'],['disk','Total disk (GB)','100'],['diskOverallocate','Disk over-allocation (%)','0'],['cpu','CPU limit (%)','100'],['apiPort','Daemon port','6768'],['sftpPort','Daemon SFTP port','2022']] as const).map(([key, label, placeholder]) => <label key={key} className="block text-xs font-medium text-muted-foreground">{label}<input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} inputMode="numeric" min={key.includes('Overallocate') ? -1 : 1} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>)}
               </div>
               <label className="mt-3 block text-xs font-medium text-muted-foreground">Server file directory<input value={form.serverDirectory || "/var/lib/shironex/servers"} onChange={(event) => setForm((current) => ({ ...current, serverDirectory: event.target.value }))} placeholder="/var/lib/shironex/servers" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-sm text-foreground outline-none focus:border-cyan-300/50" /></label>
               <div className="mt-5 space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4 text-sm">{editingNode && <label className="flex items-center gap-2"><input type="checkbox" checked={restartAfterEdit} onChange={(event) => setRestartAfterEdit(event.target.checked)} /> Restart node automatically after saving</label>}<label className="flex items-center gap-2"><input type="checkbox" checked={form.tls} onChange={(event) => setForm((current) => ({ ...current, tls: event.target.checked }))} /> Use HTTPS/TLS for daemon communication</label>{form.tls && <label className="flex items-center gap-2"><input type="checkbox" checked={form.tlsVerify} onChange={(event) => setForm((current) => ({ ...current, tlsVerify: event.target.checked }))} /> Verify the origin TLS certificate</label>}<label className="flex items-center gap-2"><input type="checkbox" checked={form.behindProxy} onChange={(event) => setForm((current) => ({ ...current, behindProxy: event.target.checked, tls: event.target.checked ? true : current.tls }))} /> Behind a reverse proxy</label>{!editingNode && <label className="flex items-center gap-2"><input type="checkbox" checked={form.createCloudflareDns} onChange={(event) => setForm((current) => ({ ...current, createCloudflareDns: event.target.checked }))} /> Create Cloudflare DNS automatically</label>}{form.behindProxy && <div className="space-y-2 rounded-xl border border-violet-300/15 bg-violet-300/5 p-3"><p className="text-xs font-medium text-violet-200">Optional Cloudflare Access service token</p><input value={form.cloudflareAccessClientId} onChange={(event) => setForm((current) => ({ ...current, cloudflareAccessClientId: event.target.value }))} placeholder="Client ID" className="w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-sm text-foreground outline-none focus:border-cyan-300/50" /><input type="password" autoComplete="new-password" value={form.cloudflareAccessClientSecret} onChange={(event) => setForm((current) => ({ ...current, cloudflareAccessClientSecret: event.target.value }))} placeholder="Client secret (stored encrypted)" className="w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-sm text-foreground outline-none focus:border-cyan-300/50" /></div>}<p className="text-xs leading-5 text-muted-foreground">For a Cloudflare Tunnel or Zero Trust public hostname, enter the FQDN, enable HTTPS/TLS and Behind a reverse proxy. Snck calls the public endpoint on 443 while the daemon can listen locally on 8080 (or another configured origin port). After creation, run the generated command as root on the node VPS.</p></div>
+              {error && <p role="alert" className="mt-4 text-sm text-rose-300">{error}</p>}
               <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => { setOpen(false); setEditingNode(null); setRestartAfterEdit(false); }} className="snx-secondary-button">Cancel</button><button type="button" disabled={busy !== null || !form.name.trim() || !form.hostname.trim()} onClick={() => void saveNode()} className="snx-primary-button">{busy === `${editingNode?.id}:edit` ? "Saving…" : editingNode ? "Save changes" : "Create Node"}</button></div>
             </section>
           </div>

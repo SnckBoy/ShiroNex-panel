@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from "react"; 
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
-import { 
-  Folder, File, ArrowLeft, Upload, Trash2, Edit2, Save, Archive, Search, X, 
-  CheckSquare, Square, Download, FilePlus, FolderPlus, MoreVertical, FileText, 
+import {
+  Folder, File, ArrowLeft, Upload, Trash2, Edit2, Save, Archive, Search, X,
+  CheckSquare, Square, Download, FilePlus, FolderPlus, MoreVertical, FileText,
   FileArchive, FileCode, Check, AlertTriangle, ChevronRight, FolderDown, RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,10 +24,30 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const [path, setPath] = useState("/");
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState("");
+  const [savedContent, setSavedContent] = useState("");
+  const isDirty = editingFile !== null && fileContent !== savedContent;
+  const requestRef = useRef<AbortController | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scopeRef = useRef(`${serverId}:${path}`);
+  scopeRef.current = `${serverId}:${path}`;
+  const canLeaveEditor = () => !isDirty || window.confirm("Discard unsaved file changes?");
+  useEffect(() => {
+    if (!isDirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    const guardLink = (event: MouseEvent) => {
+      const link = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+      if (!link || link.target === "_blank" || link.hasAttribute("download") || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+      if (link.href === window.location.href) return;
+      if (!window.confirm("Discard unsaved file changes?")) { event.preventDefault(); event.stopPropagation(); }
+    };
+    window.addEventListener("beforeunload", warn);
+    document.addEventListener("click", guardLink, true);
+    return () => { window.removeEventListener("beforeunload", warn); document.removeEventListener("click", guardLink, true); };
+  }, [isDirty]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  
+
   // Loading states
   const [isLoading, setIsLoading] = useState(false);
   const [isUnzipping, setIsUnzipping] = useState(false);
@@ -48,12 +68,12 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 3500);
-  };
+    toastTimer.current = setTimeout(() => setToast(null), 4500);
+  }, []);
+  useEffect(() => () => { requestRef.current?.abort(); if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   // Close row menu on click outside
   useEffect(() => {
@@ -66,31 +86,35 @@ export default function FileManager({ serverId }: { serverId: string }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
+    if (scopeRef.current !== `${serverId}:${path}`) return;
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const scope = `${serverId}:${path}`;
     setIsLoading(true);
     try {
-      const res = await axios.get(`/api/servers/${serverId}/files?path=${encodeURIComponent(path)}`);
-      if (res.data.isFile) {
-        setFileContent(res.data.content);
-      } else {
-        setFiles(Array.isArray(res.data) ? res.data : []);
-      }
-    } catch (e: any) {
-      setFiles([]);
-      showToast("Failed to fetch folder contents", "error");
+      const res = await axios.get(`/api/servers/${serverId}/files`, { params: { path }, signal: controller.signal, timeout: 20000 });
+      if (!controller.signal.aborted && scopeRef.current === scope) setFiles(Array.isArray(res.data) ? res.data : []);
+    } catch (error: any) {
+      if (!controller.signal.aborted && scopeRef.current === scope) showToast(error.response?.data?.error || "Failed to fetch folder contents", "error");
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted && scopeRef.current === scope) setIsLoading(false);
     }
-  };
+  }, [serverId, path, showToast]);
 
   useEffect(() => {
-    fetchFiles();
+    setFiles([]);
+    void fetchFiles();
     setSelectedFiles(new Set());
     setSearchQuery("");
     setOpenMenuRow(null);
-  }, [path, serverId]);
+    setEditingFile(null);
+    return () => requestRef.current?.abort();
+  }, [fetchFiles]);
 
   const goUp = () => {
+    if (!canLeaveEditor() || isSaving) return;
     if (editingFile) {
       setEditingFile(null);
       return;
@@ -102,6 +126,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
   };
 
   const navigateToSegment = (index: number) => {
+    if (!canLeaveEditor() || isSaving) return;
     if (editingFile) setEditingFile(null);
     const parts = path.split("/").filter(Boolean);
     if (index === -1) {
@@ -117,27 +142,36 @@ export default function FileManager({ serverId }: { serverId: string }) {
   };
 
   const openFile = async (name: string) => {
+    if (!canLeaveEditor()) return;
+    const item = files.find(file => file.name === name);
+    if (item && item.size > 2 * 1024 * 1024) { showToast("Files over 2 MB should be downloaded for editing to keep the panel responsive.", "error"); return; }
     if (!name.match(/\.(txt|json|yml|yaml|properties|log|conf|ini|sh|bat|cmd|env|toml|xml|md)$/i)) {
       showToast("Binary format cannot be directly edited in text editor.", "error");
       return;
     }
     const fullPath = path.endsWith("/") ? path + name : path + "/" + name;
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const scope = scopeRef.current;
     try {
       setIsLoading(true);
-      const res = await axios.get(`/api/servers/${serverId}/files?path=${encodeURIComponent(fullPath)}`);
+      const res = await axios.get(`/api/servers/${serverId}/files?path=${encodeURIComponent(fullPath)}`, { signal: controller.signal, timeout: 20000 });
+      if (controller.signal.aborted || scope !== scopeRef.current) return;
       if (res.data.isFile) {
         setEditingFile(name);
         setFileContent(res.data.content);
+        setSavedContent(res.data.content);
       }
     } catch (e) {
-      showToast("Failed to load file contents", "error");
+      if (!controller.signal.aborted) showToast("Failed to load file contents", "error");
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted && scope === scopeRef.current) setIsLoading(false);
     }
   };
 
   const saveFile = async () => {
-    if (!editingFile) return;
+    if (!editingFile || isSaving || !isDirty) return;
     setIsSaving(true);
     try {
       const fullPath = path.endsWith("/") ? path + editingFile : path + "/" + editingFile;
@@ -145,6 +179,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
         filePath: fullPath,
         content: fileContent
       });
+      setSavedContent(fileContent);
       showToast(`Saved ${editingFile} successfully`, "success");
     } catch (e) {
       showToast("Failed to save file", "error");
@@ -170,7 +205,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
     if (selectedFiles.size === 0) return;
     const p = path.endsWith("/") ? path : path + "/";
     const selectedList = Array.from(selectedFiles);
-    
+
     if (selectedList.length === 1) {
       const item = files.find(f => f.name === selectedList[0]);
       handleDownload(selectedList[0], item?.isDirectory || false);
@@ -345,12 +380,14 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
+    if (files.some(item => item.name === file.name) && !window.confirm(`Replace '${file.name}' with this upload?`)) { e.target.value = ""; return; }
     const chunkSize = 4 * 1024 * 1024;
     const uploadId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
     const filePath = `${path.endsWith("/") ? path : `${path}/`}${file.name}`;
     let offset = 0;
     try {
       setUploadProgress(0);
+      if (file.size === 0) await axios.post(`/api/servers/${serverId}/files/create`, { filePath });
       while (offset < file.size) {
         const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
         const bytes = new Uint8Array(await chunk.arrayBuffer());
@@ -362,7 +399,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
         for (let attempt = 0; attempt < 3 && !sent; attempt += 1) {
           try {
             const response = await axios.post(`/api/servers/${serverId}/files/upload-chunk`, { uploadId, filePath, offset, totalSize: file.size, content });
-            offset = Number(response.data?.offset || offset + bytes.length);
+            const nextOffset = Number(response.data?.offset);
+            if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > file.size) throw new Error("Invalid upload acknowledgement. Please retry the upload.");
+            offset = nextOffset;
             sent = true;
           } catch (error) {
             lastError = error;
@@ -373,9 +412,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
         setUploadProgress(Math.round((offset * 100) / Math.max(1, file.size)));
       }
       showToast(`Uploaded '${file.name}'`, "success");
-      await fetchFiles();
+      if (scopeRef.current === `${serverId}:${path}`) await fetchFiles();
     } catch (err: any) {
-      showToast(err.response?.data?.error || "Upload failed after retries", "error");
+      showToast(err.response?.data?.error || err.message || "Upload failed after retries", "error");
     } finally {
       setUploadProgress(null);
       e.target.value = "";
@@ -384,7 +423,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
   // Selection helpers
   const toggleSelectAll = () => {
-    if (selectedFiles.size === filteredFiles.length) {
+    if (filteredFiles.every(file => selectedFiles.has(file.name))) {
       setSelectedFiles(new Set());
     } else {
       setSelectedFiles(new Set(filteredFiles.map(f => f.name)));
@@ -402,7 +441,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
     setSelectedFiles(newSet);
   };
 
-  const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredFiles = useMemo(() => files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name, undefined, { numeric: true })), [files, searchQuery]);
 
   // Render File Type Icon
   const getFileIcon = (item: FileItem) => {
@@ -426,8 +466,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const pathSegments = path.split("/").filter(Boolean);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden relative min-h-0 h-full w-full bg-transparent p-3 sm:p-5">
-      
+    <div className="snx-file-manager flex-1 flex flex-col overflow-hidden relative min-h-0 h-full w-full bg-transparent p-3 sm:p-5">
+
       {/* Toast Banner */}
       <AnimatePresence>
         {toast && (
@@ -435,9 +475,10 @@ export default function FileManager({ serverId }: { serverId: string }) {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
+            role={toast.type === "error" ? "alert" : "status"}
             className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl border text-sm font-semibold backdrop-blur-xl ${
-              toast.type === "success" 
-                ? "bg-emerald-950/90 border-emerald-500/30 text-emerald-300" 
+              toast.type === "success"
+                ? "bg-emerald-950/90 border-emerald-500/30 text-emerald-300"
                 : "bg-red-950/90 border-red-500/30 text-red-300"
             }`}
           >
@@ -448,13 +489,13 @@ export default function FileManager({ serverId }: { serverId: string }) {
       </AnimatePresence>
 
       {/* Top Header & Breadcrumb Bar */}
-      <div className="p-4 md:p-5 mb-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-card/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-border shrink-0 gap-4 shadow-lg">
-        
+      <div className="snx-file-toolbar p-4 md:p-5 mb-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-card/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-border shrink-0 gap-4 shadow-lg">
+
         {/* Left: Back & Interactive Breadcrumbs */}
         <div className="flex items-center space-x-2 overflow-x-auto custom-scrollbar py-1">
-          <button 
-            onClick={goUp} 
-            disabled={path === "/" && !editingFile} 
+          <button
+            onClick={goUp}
+            disabled={path === "/" && !editingFile}
             className="p-2 bg-muted/80 hover:bg-muted rounded-xl text-foreground disabled:opacity-30 transition-colors shrink-0"
             title="Go Back"
           >
@@ -463,7 +504,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
           {/* Breadcrumb links */}
           <div className="flex items-center space-x-1 font-mono text-xs font-semibold text-foreground bg-slate-950/70 px-3 py-2 rounded-xl border border-border backdrop-blur-md shadow-inner">
-            <button 
+            <button
               onClick={() => navigateToSegment(-1)}
               className="text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
             >
@@ -490,15 +531,16 @@ export default function FileManager({ serverId }: { serverId: string }) {
             )}
           </div>
         </div>
-        
+
         {/* Search Bar */}
         {!editingFile && (
           <div className="flex-1 w-full max-w-xs sm:max-w-sm">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search files & folders..." 
+              <input
+                type="text"
+                aria-label="Search files and folders"
+                placeholder="Search files & folders..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full bg-background/80 border border-border rounded-xl py-2 pl-9 pr-4 text-xs text-foreground focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
@@ -523,16 +565,16 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 </div>
               ) : (
                 <>
-                  <button 
-                    onClick={() => { setModalInput(""); setActiveModal("create_file"); }} 
+                  <button
+                    onClick={() => { setModalInput(""); setActiveModal("create_file"); }}
                     className="flex items-center space-x-1.5 px-3 py-2 bg-muted/80 hover:bg-muted rounded-xl text-xs font-semibold text-foreground border border-border hover:border-indigo-500/40 transition-all cursor-pointer"
                     title="New File"
                   >
                     <FilePlus size={15} className="text-indigo-400" />
                     <span className="hidden md:inline">File</span>
                   </button>
-                  <button 
-                    onClick={() => { setModalInput(""); setActiveModal("create_folder"); }} 
+                  <button
+                    onClick={() => { setModalInput(""); setActiveModal("create_folder"); }}
                     className="flex items-center space-x-1.5 px-3 py-2 bg-muted/80 hover:bg-muted rounded-xl text-xs font-semibold text-foreground border border-border hover:border-indigo-500/40 transition-all cursor-pointer"
                     title="New Folder"
                   >
@@ -541,7 +583,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                   </button>
                   <label className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-semibold text-white transition-all shadow-md shadow-indigo-600/20 cursor-pointer">
                     <input type="file" onChange={handleFileUpload} className="hidden" />
-                    <Upload size={15} /> 
+                    <Upload size={15} />
                     <span>Upload</span>
                   </label>
                   <button
@@ -555,9 +597,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
               )}
             </>
           ) : (
-            <button 
-              disabled={isSaving} 
-              onClick={saveFile} 
+            <button
+              disabled={isSaving || !isDirty}
+              onClick={saveFile}
               className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold text-white transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
             >
               {isSaving ? <div className="w-4 h-4 rounded-full border-2 border-white/50 border-t-white animate-spin" /> : <Save size={16} />}
@@ -567,24 +609,30 @@ export default function FileManager({ serverId }: { serverId: string }) {
         </div>
       </div>
 
+      <div className="snx-file-status" role="status">
+        <span>{editingFile || `${filteredFiles.length} items · ${selectedFiles.size} selected`}</span>
+        {editingFile ? <span data-dirty={isDirty}>{isDirty ? "Unsaved changes" : "Saved"} · Ctrl / Cmd + S to save</span> : <span>Folders first · Name A–Z</span>}
+      </div>
       {/* Main File Content / List Area */}
       <div className="flex-1 overflow-y-auto p-2 sm:p-4 custom-scrollbar flex flex-col min-h-0 relative bg-slate-950/40 rounded-2xl border border-border-subtle">
         <AnimatePresence mode="wait">
           {editingFile ? (
-            <motion.div 
+            <motion.div
               key="editor"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex flex-col min-h-0"
             >
-              <textarea 
-                value={fileContent} 
+              <textarea
+                aria-label={`Edit ${editingFile}`}
+                onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void saveFile(); } }}
+                value={fileContent}
                 onChange={(e) => setFileContent(e.target.value)}
                 className="flex-1 w-full h-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-200 font-mono text-xs sm:text-sm focus:outline-none focus:border-indigo-500/50 resize-none custom-scrollbar min-h-0 shadow-inner leading-relaxed"
                 spellCheck={false}
               />
             </motion.div>
           ) : (
-            <motion.div 
+            <motion.div
               key="filelist"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1"
@@ -592,8 +640,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
               {/* Table Header */}
               {filteredFiles.length > 0 && (
                 <div className="flex items-center px-4 py-2.5 mb-2 border-b border-border/50 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  <button onClick={toggleSelectAll} className="mr-3 transition-colors hover:text-foreground">
-                    {selectedFiles.size === filteredFiles.length ? (
+                  <button aria-label="Select all visible files" onClick={toggleSelectAll} className="mr-3 transition-colors hover:text-foreground">
+                    {filteredFiles.every(file => selectedFiles.has(file.name)) ? (
                       <CheckSquare size={18} className="text-indigo-400" />
                     ) : (
                       <Square size={18} />
@@ -618,30 +666,33 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 const isMenuOpen = openMenuRow === f.name;
 
                 return (
-                  <div 
-                    key={f.name} 
+                  <div
+                    key={f.name}
                     onClick={(e) => toggleSelectFile(f.name, e)}
                     className={`flex items-center justify-between p-3 rounded-xl group transition-all cursor-pointer mb-1 border relative ${
-                      isSelected 
-                        ? 'bg-indigo-500/10 border-indigo-500/40 shadow-sm' 
+                      isSelected
+                        ? 'bg-indigo-500/10 border-indigo-500/40 shadow-sm'
                         : 'bg-card/40 border-transparent hover:bg-card hover:border-border/60'
                     }`}
                   >
                     {/* Left: Checkbox & Icon & Name */}
                     <div className="flex items-center space-x-3 flex-1 overflow-hidden">
-                      <button 
-                        onClick={(e) => toggleSelectFile(f.name, e)} 
+                      <button
+                        aria-label={`Select ${f.name}`}
+                        aria-pressed={isSelected}
+                        onClick={(e) => toggleSelectFile(f.name, e)}
                         className={`transition-colors shrink-0 ${isSelected ? 'text-indigo-400' : 'text-slate-500 group-hover:text-slate-400'}`}
                       >
                         {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
                       </button>
 
-                      <div 
-                        className="flex items-center space-x-3 flex-1 overflow-hidden" 
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          if (f.isDirectory) traverse(f.name); 
-                          else openFile(f.name); 
+                      <button type="button"
+                        aria-label={`Open ${f.name}`}
+                        className="flex items-center space-x-3 flex-1 overflow-hidden text-left"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (f.isDirectory) traverse(f.name);
+                          else openFile(f.name);
                         }}
                       >
                         {getFileIcon(f)}
@@ -650,7 +701,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                             {f.name}
                           </span>
                         </div>
-                      </div>
+                      </button>
                     </div>
 
                     {/* Right: File Size & Quick Actions */}
@@ -735,9 +786,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
         {/* Floating Action Bar for Selected Items */}
         <AnimatePresence>
           {selectedFiles.size > 0 && !editingFile && (
-            <motion.div 
-              initial={{ opacity: 0, y: 50 }} 
-              animate={{ opacity: 1, y: 0 }} 
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
               className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/80 rounded-2xl shadow-2xl p-2 px-4 flex items-center space-x-3 z-30"
             >
@@ -748,8 +799,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
               <div className="h-5 w-px bg-slate-700" />
 
               {/* Download Selected */}
-              <button 
-                onClick={handleDownloadSelected} 
+              <button
+                onClick={handleDownloadSelected}
                 className="p-2 text-slate-300 hover:text-indigo-400 hover:bg-slate-800 rounded-xl transition-all flex items-center gap-1.5 text-xs font-medium"
                 title="Download Selected (Streams file or ZIP bundle)"
               >
@@ -759,12 +810,12 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
               {/* Rename if 1 item selected */}
               {selectedFiles.size === 1 && (
-                <button 
+                <button
                   onClick={() => {
                     const name = Array.from(selectedFiles)[0];
                     const item = files.find(f => f.name === name);
                     if (item) openRenameModal(item);
-                  }} 
+                  }}
                   className="p-2 text-slate-300 hover:text-blue-400 hover:bg-slate-800 rounded-xl transition-all flex items-center gap-1.5 text-xs font-medium"
                   title="Rename"
                 >
@@ -775,10 +826,10 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
               {/* Unzip if 1 zip selected */}
               {selectedFiles.size === 1 && (Array.from(selectedFiles)[0] as string).endsWith('.zip') && (
-                <button 
-                  onClick={() => handleUnzipItem(Array.from(selectedFiles)[0] as string)} 
-                  disabled={isUnzipping} 
-                  className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
+                <button
+                  onClick={() => handleUnzipItem(Array.from(selectedFiles)[0] as string)}
+                  disabled={isUnzipping}
+                  className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium"
                   title="Extract ZIP"
                 >
                   {isUnzipping ? (
@@ -791,10 +842,10 @@ export default function FileManager({ serverId }: { serverId: string }) {
               )}
 
               {/* Zip selected */}
-              <button 
-                onClick={() => openZipModal()} 
-                disabled={isZipping} 
-                className="p-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
+              <button
+                onClick={() => openZipModal()}
+                disabled={isZipping}
+                className="p-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium"
                 title="Compress Selected into ZIP"
               >
                 {isZipping ? (
@@ -806,10 +857,10 @@ export default function FileManager({ serverId }: { serverId: string }) {
               </button>
 
               {/* Delete selected */}
-              <button 
-                onClick={() => openDeleteModal()} 
-                disabled={isDeleting} 
-                className="p-2 text-slate-300 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
+              <button
+                onClick={() => openDeleteModal()}
+                disabled={isDeleting}
+                className="p-2 text-slate-300 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium"
                 title="Delete Selected"
               >
                 {isDeleting ? (
@@ -822,9 +873,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
               <div className="h-5 w-px bg-slate-700" />
 
-              <button 
-                onClick={() => setSelectedFiles(new Set())} 
-                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all" 
+              <button
+                onClick={() => setSelectedFiles(new Set())}
+                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all"
                 title="Clear Selection"
               >
                 <X size={16} />

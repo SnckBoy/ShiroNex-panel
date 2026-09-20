@@ -354,11 +354,11 @@ export default function ServerView() {
              ) : actionNotice.text}
            </div>}
            <Routes>
-             <Route path="/" element={<ServerConsole serverId={id!} server={server} actionNotice={actionNotice} />} />
+             <Route path="/" element={<ServerConsole key={id} serverId={id!} server={server} actionNotice={actionNotice} />} />
              <Route path="/overview" element={<ServerOverview serverId={id!} server={server} />} />
              <Route path="/players" element={<ServerPlayers serverId={id!} />} />
              <Route path="/properties" element={<ServerProperties serverId={id!} />} />
-             <Route path="/files" element={<FileManager serverId={id!} />} />
+             <Route path="/files" element={<FileManager key={id} serverId={id!} />} />
              <Route path="/sftp" element={<ServerSFTP serverId={id!} server={server} />} />
              <Route path="/subusers" element={<SubUsersManager serverId={id!} />} />
              <Route path="/settings" element={<ServerSettings serverId={id!} server={server} />} />
