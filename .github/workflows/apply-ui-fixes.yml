@@ -40,18 +40,18 @@ jobs:
           rep(p,"""  const handleAction = async (action: string) => {""","""  const confirmKill = () => {\n    if (window.confirm('Are you sure you want to force-kill this server? This may interrupt running processes.')) handleAction('kill');\n  };\n\n  const handleAction = async (action: string) => {""")
           rep(p,"onClick={() => { handleAction('kill'); setSidebarOpen(false); }}", "onClick={() => { confirmKill(); setSidebarOpen(false); }}")
           rep(p,"onClick={() => handleAction('kill')}", "onClick={confirmKill}")
-          rep(p,'  if (!server) return (\n    <div className="h-full flex items-center justify-center p-8">','  if (!server) return (\n    <div className="h-full flex items-center justify-center p-8">')
           old='''      <motion.div\n        animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}\n        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}\n        className="w-12 h-12 border-2 border-indigo-500 border-t-transparent rounded-full"\n      />'''
           new='''      {fetchError ? (\n        <div className="max-w-md text-center">\n          <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-amber-400" />\n          <p className="mb-4 text-sm text-muted-foreground">{fetchError}</p>\n          <button onClick={fetchServer} className="snx-secondary-button px-4 py-2 rounded-lg text-sm">Retry</button>\n        </div>\n      ) : (\n        <motion.div animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-2 border-indigo-500 border-t-transparent rounded-full" />\n      )}'''
           rep(p,old,new)
           rep(p,'{server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}','{server.ipAlias ? `${server.ipAlias}:${server.port}` : `${window.location.hostname}:${server.port}`}',2)
           Path('.github/workflows/apply-ui-fixes.yml').unlink()
+          Path('.snx-ui-fix-trigger').unlink(missing_ok=True)
           PY
+          sed -i 's/[[:space:]]\+$//' src/pages/ServerView.tsx src/pages/Dashboard.tsx src/pages/ServerList.tsx
           git diff --check
-          git diff -- src/pages/Dashboard.tsx src/pages/ServerList.tsx src/pages/ServerView.tsx
           npm run build
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/pages/Dashboard.tsx src/pages/ServerList.tsx src/pages/ServerView.tsx .github/workflows/apply-ui-fixes.yml
+          git add src/pages/Dashboard.tsx src/pages/ServerList.tsx src/pages/ServerView.tsx .github/workflows/apply-ui-fixes.yml .snx-ui-fix-trigger
           git commit -m "fix(ui): apply ShiroNex dashboard and server view fixes"
           git push
