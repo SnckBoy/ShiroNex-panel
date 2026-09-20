@@ -1,6 +1,6 @@
 // @ts-nocheck
 // @ts-nocheck
-import React, { useEffect, useState } from "react"; 
+import React, { useEffect, useRef, useState } from "react";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { useParams, Link, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -34,23 +34,29 @@ export default function ServerView() {
   const [copied, setCopied] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionNotice, setActionNotice] = useState<{ tone: "info" | "success" | "error"; text: string; dockerUnavailable?: boolean } | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
+  const copyTimer = useRef<any>(null);
+
 
   const handleCopyIp = () => {
     if (!server) return;
     const textToCopy = server.ipAlias ? `${server.ipAlias}:${server.port}` : `${window.location.hostname}:${server.port}`;
-    navigator.clipboard.writeText(textToCopy);
+    navigator.clipboard.writeText(textToCopy).catch(() => {});
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
   };
 
   const fetchServer = async () => {
     try {
       const res = await axios.get(`/api/servers/${id}`);
       setServer(res.data);
-    } catch(e) {}
+      setFetchError(null);
+    } catch(e) {
+      setFetchError("Unable to load this server. Check your session or try again.");
+    }
   };
 
   useEffect(() => {
@@ -59,7 +65,7 @@ export default function ServerView() {
       setTotalSystemRam(res.data.totalMemory / (1024 * 1024 * 1024));
     }).catch(() => {});
     const interval = setInterval(fetchServer, 5000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); if (copyTimer.current) window.clearTimeout(copyTimer.current); };
   }, [id]);
 
   const executeAction = async (action: string) => {
@@ -82,6 +88,10 @@ export default function ServerView() {
     }
   };
 
+  const confirmKill = () => {
+    if (window.confirm('Are you sure you want to force-kill this server? This may interrupt running processes.')) handleAction('kill');
+  };
+
   const handleAction = async (action: string) => {
     if (action === 'start' && totalSystemRam > 0 && server?.ram > totalSystemRam && !showRamWarning) {
       setShowRamWarning(true);
@@ -92,11 +102,11 @@ export default function ServerView() {
 
   if (!server) return (
     <div className="h-full flex items-center justify-center p-8">
-      <motion.div
-        animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}
-        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        className="w-12 h-12 border-2 border-indigo-500 border-t-transparent rounded-full"
-      />
+      {fetchError ? (
+        <div className="max-w-md text-center"><AlertTriangle className="mx-auto mb-3 h-8 w-8 text-amber-400" /><p className="mb-4 text-sm text-muted-foreground">{fetchError}</p><button onClick={fetchServer} className="snx-secondary-button px-4 py-2 rounded-lg text-sm">Retry</button></div>
+      ) : (
+        <motion.div animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-2 border-indigo-500 border-t-transparent rounded-full" />
+      )}
     </div>
   );
 
@@ -110,8 +120,8 @@ export default function ServerView() {
         <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
           This server has been suspended by an administrator. You cannot access or manage this server until the suspension is removed.
         </p>
-        <Link 
-          to="/servers" 
+        <Link
+          to="/servers"
           className="snx-secondary-button inline-flex items-center justify-center px-6 py-2.5 text-sm font-medium rounded-lg"
         >
           Return to Dashboard
@@ -130,7 +140,7 @@ export default function ServerView() {
   ];
 
   const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(server?.type?.toUpperCase() || "");
-  
+
   if (!isProxy) {
     tabs.splice(1, 0, { name: "Properties", path: `/servers/${id}/properties`, exactPath: "properties", icon: <Sliders size={18} /> });
   }
@@ -161,20 +171,20 @@ export default function ServerView() {
   ];
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
       className="snx-server-view flex h-full bg-transparent overflow-hidden"
     >
-            
-      
+
+
       {/* Drawer Overlay */}
       {sidebarOpen && (
-        <div 
-          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity" 
-          onClick={() => setSidebarOpen(false)} 
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
+          onClick={() => setSidebarOpen(false)}
         />
       )}
 
@@ -187,7 +197,7 @@ export default function ServerView() {
             </Link>
             <h1 className="text-lg font-bold tracking-tight text-foreground truncate pr-2">{server.name}</h1>
           </div>
-          <button 
+          <button
             type="button"
             aria-label="Close server navigation"
             onClick={() => setSidebarOpen(false)}
@@ -196,7 +206,7 @@ export default function ServerView() {
             <X size={16} />
           </button>
         </div>
-        
+
         <div className="snx-server-sidebar-scroll flex-1 overflow-y-auto p-3 flex flex-col gap-1 custom-scrollbar">
           {/* Status & Quick Actions */}
           <div className="snx-server-status-card mb-4 p-3 rounded-xl">
@@ -209,7 +219,7 @@ export default function ServerView() {
                 <span className="text-xs text-muted-foreground">•</span>
                   <button type="button" onClick={handleCopyIp} aria-label="Copy server connection address" className="flex items-center space-x-1.5 px-1.5 py-0.5 rounded-md hover:bg-muted-hover transition-colors group cursor-pointer truncate" title="Copy Connection Info">
                   <span className="snx-mono-label text-[11px] font-mono truncate">
-                    {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
+                    {server.ipAlias ? `${server.ipAlias}:${server.port}` : `${window.location.hostname}:${server.port}`}
                   </span>
                   {copied ? <Check size={12} className="text-emerald-400 shrink-0" /> : <Copy size={12} className="text-muted-foreground group-hover:text-foreground-muted transition-colors shrink-0" />}
                 </button>
@@ -227,20 +237,20 @@ export default function ServerView() {
                 <button disabled={isProcessing} onClick={() => { handleAction('restart'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--restart col-span-2 py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />} Restart
                 </button>
-                <button disabled={isProcessing} onClick={() => { handleAction('kill'); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--kill col-span-2 py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
+                <button disabled={isProcessing} onClick={() => { confirmKill(); setSidebarOpen(false); }} className="snx-quick-action snx-quick-action--kill col-span-2 py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   <OctagonX className="w-3.5 h-3.5 mr-1.5" /> Kill
                 </button>
              </div>
           </div>
-          
+
           <div className="snx-divider h-px mb-3" />
-          
+
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-3 tracking-wider uppercase">Menu</div>
 
           {tabs.map(tab => {
              const isActive = location.pathname === tab.path || location.pathname === `${tab.path}/`;
              return (
-              <Link 
+              <Link
                 key={tab.name}
                 to={tab.path}
                 onClick={() => setSidebarOpen(false)}
@@ -253,14 +263,14 @@ export default function ServerView() {
               </Link>
             );
           })}
-          
+
           <div className="snx-divider h-px my-4" />
-          
+
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-3 tracking-wider uppercase">Navigation</div>
 
           {navTabs.map(tab => {
              return (
-              <Link 
+              <Link
                 key={tab.name}
                 to={tab.path}
                 onClick={() => setSidebarOpen(false)}
@@ -281,7 +291,7 @@ export default function ServerView() {
         <div className="snx-server-topbar p-3 md:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 relative z-20">
           <div className="flex items-center justify-between w-full md:w-auto">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 type="button"
                 aria-label={sidebarOpen ? "Close server navigation" : "Open server navigation"}
                 aria-expanded={sidebarOpen}
@@ -302,11 +312,11 @@ export default function ServerView() {
                <span className="text-xs font-medium text-muted-foreground capitalize flex">{server.status}</span>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 sm:pb-0 justify-between w-full md:w-auto">
              <button type="button" onClick={handleCopyIp} aria-label="Copy server connection address" className="snx-connection-chip flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer shrink-0" title="Copy Connection Info">
                 <span className="text-xs font-mono text-muted-foreground group-hover:text-foreground-muted transition-colors truncate max-w-[150px] lg:max-w-[200px]">
-                  {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
+                  {server.ipAlias ? `${server.ipAlias}:${server.port}` : `${window.location.hostname}:${server.port}`}
                 </span>
                 {copied ? <Check size={14} className="text-emerald-400 shrink-0" /> : <Copy size={14} className="text-muted-foreground group-hover:text-foreground-muted transition-colors shrink-0" />}
              </button>
@@ -318,7 +328,7 @@ export default function ServerView() {
                 </span>
                 <span className="text-xs font-medium text-muted-foreground capitalize flex">{server.status}</span>
              </div>
-                
+
              <div className="flex items-center space-x-1 sm:space-x-2 shrink-0 ml-auto md:ml-1">
                 {server.status !== 'online' ? (
                   <button disabled={isProcessing} onClick={() => handleAction('start')} className="snx-quick-action snx-quick-action--start p-1.5 sm:px-3 sm:py-1.5 font-semibold rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
@@ -332,7 +342,7 @@ export default function ServerView() {
                 <button disabled={isProcessing} onClick={() => handleAction('restart')} className="snx-quick-action snx-quick-action--restart p-1.5 sm:px-3 sm:py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50">
                   {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin sm:mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 sm:mr-1.5" />} <span className="hidden sm:block">Restart</span>
                 </button>
-                <button disabled={isProcessing} onClick={() => handleAction('kill')} className="snx-quick-action snx-quick-action--kill p-1.5 sm:px-3 sm:py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50" title="Kill server">
+                <button disabled={isProcessing} onClick={confirmKill} className="snx-quick-action snx-quick-action--kill p-1.5 sm:px-3 sm:py-1.5 font-medium rounded-lg flex items-center justify-center text-xs disabled:opacity-50" title="Kill server">
                   <OctagonX className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:block">Kill</span>
                 </button>
              </div>
@@ -376,7 +386,7 @@ export default function ServerView() {
       <AnimatePresence>
         {showRamWarning && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -390,7 +400,7 @@ export default function ServerView() {
                 <div>
                   <h3 className="text-xl font-bold text-foreground mb-1">High RAM Allocation</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
-                    This instance is configured to use up to <strong className="text-foreground">{server?.ram}GB</strong> of RAM, but this system only has <strong className="text-foreground">{totalSystemRam.toFixed(1)}GB</strong> physically available. 
+                    This instance is configured to use up to <strong className="text-foreground">{server?.ram}GB</strong> of RAM, but this system only has <strong className="text-foreground">{totalSystemRam.toFixed(1)}GB</strong> physically available.
                   </p>
                   <p className="text-muted-foreground text-sm leading-relaxed mt-2">
                     The container uses memory on-demand, but if actual memory usage exceeds the host's physical RAM, the server will crash/be terminated by the OS.

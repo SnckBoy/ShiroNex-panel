@@ -223,7 +223,7 @@ const ServerCard = memo(function ServerCard({
       ) : (
         <Link
           to={`/servers/${server.id}`}
-          className="group relative block overflow-hidden rounded-2xl border border-border-subtle bg-muted-subtle p-5 transition-colors duration-200 hover:border-border-strong hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 md:p-6"
+          className="group relative block overflow-hidden rounded-2xl border border-border bg-muted p-5 transition-all duration-200 hover:border-[var(--snx-primary-line)] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 md:p-6"
         >
           {content}
         </Link>
@@ -240,7 +240,7 @@ function LoadingState() {
       style={{ backgroundColor: SURFACE }}
     >
       <div
-        className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-white/70"
+        className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-[var(--snx-primary)]"
         aria-hidden
       />
       <p className="text-sm font-medium text-muted-foreground">Loading instances…</p>
@@ -267,7 +267,7 @@ function EmptyState({ isAdmin }: { isAdmin: boolean }) {
       {isAdmin && (
         <Link
           to="/servers/create"
-          className="mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--btn-primary-bg)] px-4 text-sm font-semibold text-[var(--btn-primary-text)] transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
+          className="mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--snx-primary)] px-4 text-sm font-semibold text-white transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
         >
           <Plus className="h-4 w-4" />
           Deploy your first server

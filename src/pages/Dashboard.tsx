@@ -15,11 +15,13 @@ const SparklineChart = ({ data, color }: { data: number[]; color: string }) => {
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
-  const points = data.map((value, index) => {
-    const x = (index / (data.length - 1)) * 100;
-    const y = 100 - (((value - min) / range) * 80 + 10);
-    return `${x},${y}`;
-  }).join(' ');
+  const points = data.length <= 1
+    ? data.map(() => '50,50').join(' ')
+    : data.map((value, index) => {
+        const x = (index / (data.length - 1)) * 100;
+        const y = 100 - (((value - min) / range) * 80 + 10);
+        return `${x},${y}`;
+      }).join(' ');
   return (
     <svg className="snx-metric-sparkline" preserveAspectRatio="none" viewBox="0 0 100 100" aria-hidden="true">
       <polygon points={`0,100 ${points} 100,100`} fill={color} fillOpacity="0.08" />
@@ -61,16 +63,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (realServers && Array.isArray(realServers)) {
-      setServers(realServers.map((server) => ({
-        id: server.id,
-        name: server.name,
-        type: (server.software || 'Unknown') + (server.version ? ` ${server.version}` : ''),
-        ip: server.ipAlias || `${window.location.hostname}:${server.port || 25565}`,
-        status: server.status,
-        cpu: server.cpu || 0,
-        ram: { used: server.memory || 0, total: 4096 },
-        uptime: isNaN(Number((server as any).uptime)) ? '-' : `${Math.floor(Number((server as any).uptime) / 3600)}h ${Math.floor((Number((server as any).uptime) % 3600) / 60)}m`,
-      })));
+      setServers(realServers.map((server) => {
+        const uptimeSeconds = Number((server as any).uptime);
+        const uptimeValid = (server as any).uptime != null && Number.isFinite(uptimeSeconds);
+        const totalRam = server.ram || server.memory || 4096;
+        return {
+          id: server.id, name: server.name,
+          type: (server.software || 'Unknown') + (server.version ? ` ${server.version}` : ''),
+          ip: server.ipAlias || `${window.location.hostname}:${server.port || 25565}`, status: server.status,
+          cpu: server.cpu || 0, ram: { used: server.memory || 0, total: totalRam },
+          uptime: uptimeValid ? `${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m` : '-',
+        };
+      }));
     }
   }, [realServers]);
 
@@ -116,7 +120,8 @@ export default function Dashboard() {
 
   const filteredServers = useMemo(() => {
     const query = search.toLowerCase();
-    return servers.filter((server) => server.name.toLowerCase().includes(query) || server.id.toLowerCase().includes(query) || server.ip.includes(search));
+    const safe = (value: any) => String(value ?? '').toLowerCase();
+    return servers.filter((server) => safe(server.name).includes(query) || safe(server.id).includes(query) || safe(server.ip).includes(query));
   }, [search, servers]);
 
   return (
@@ -209,7 +214,7 @@ export default function Dashboard() {
           </div>
 
           <motion.div layout className={view === 'grid' ? 'snx-server-grid' : 'snx-server-list'}>
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence mode="sync">
               {filteredServers.map((server) => (
                 <ServerCard
                   key={server.id}
