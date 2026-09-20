@@ -21,9 +21,62 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
 }
 
 const app = express();
+
+// ---------------------------------------------------------------------------
+// CORS / origin hardening.
+// Requests without an Origin header (same-origin requests, curl, health
+// checks, node-daemon heartbeats) are always allowed. In production, only the
+// panel's own public origin plus PANEL_ALLOWED_ORIGINS entries are accepted;
+// in development the common local dev origins remain permitted.
+// ---------------------------------------------------------------------------
+const extraOrigins = String(process.env.PANEL_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((entry) => entry.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
+function getAllowedOrigins(): string[] {
+  const origins = new Set<string>();
+  if (process.env.NODE_ENV === "production") {
+    const publicOrigin = String(process.env.PANEL_PUBLIC_URL || process.env.PANEL_URL || "").trim().replace(/\/+$/, "");
+    if (publicOrigin) origins.add(publicOrigin);
+    origins.add("http://localhost");
+    origins.add("http://127.0.0.1");
+    for (const extra of extraOrigins) origins.add(extra);
+  } else {
+    origins.add("http://localhost:5173");
+    origins.add("http://127.0.0.1:5173");
+    origins.add("http://localhost:3000");
+    origins.add("http://127.0.0.1:3000");
+    for (const extra of extraOrigins) origins.add(extra);
+  }
+  return Array.from(origins);
+}
+
+function originAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  return getAllowedOrigins().includes(String(origin).trim().replace(/\/+$/, ""));
+}
+
+const corsOptions = {
+  origin(origin: string | undefined, callback: (err: Error | null, ok?: boolean) => void) {
+    callback(null, originAllowed(origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Disposition"],
+};
+
 const httpServer = process.env.PANEL_TLS_KEY && process.env.PANEL_TLS_CERT ? createHttpsServer({key:fs.readFileSync(process.env.PANEL_TLS_KEY),cert:fs.readFileSync(process.env.PANEL_TLS_CERT)},app) : createHttpServer(app);
 export const io = new SocketIOServer(httpServer, {
-  cors: { origin: "*" },
+  cors: {
+    origin(origin: string | undefined, callback: (err: Error | null, ok?: boolean) => void) {
+      if (originAllowed(origin)) return callback(null, true);
+      callback(new Error("Origin not allowed by the panel CORS policy"));
+    },
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
 });
 app.set("io", io);
 
@@ -118,7 +171,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 // oversized JSON/form body and exhaust server RAM before a single upload happened.
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(cors());
+app.use(cors(corsOptions));
 app.get("/health", (_req, res) => res.json({ ok: true, service: "shironex-panel", timestamp: new Date().toISOString() }));
 
 import apiRoutes from "./src/server/routes/api.js";
