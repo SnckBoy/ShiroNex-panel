@@ -1136,7 +1136,7 @@ export const listInstalledPlugins = async (req: Request, res: Response) => {
     const remote = await remoteForServer(server);
     if (remote) {
       const entries = await nodeControl.files(remote, server.id, "list", { path: "plugins" });
-      return res.json({ items: (Array.isArray(entries) ? entries : []).filter((entry: any) => entry?.isFile && /\.jar$/i.test(String(entry.name))).map((entry: any) => ({ filename: entry.name, size: Number(entry.size) || 0 })) });
+      return res.json({ items: (Array.isArray(entries) ? entries : []).filter((entry: any) => (entry?.isFile === true || entry?.isDirectory === false) && /\.jar$/i.test(String(entry.name))).map((entry: any) => ({ filename: entry.name, size: Number(entry.size) || 0 })) });
     }
     const directory = path.join(process.cwd(), ".data", "servers", server.id, "plugins");
     const entries = await fs.pathExists(directory) ? await fs.readdir(directory, { withFileTypes: true }) : [];
