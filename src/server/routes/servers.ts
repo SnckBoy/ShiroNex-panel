@@ -15,7 +15,10 @@ const requireServerAccess = async (req: any, res: any, next: any) => {
   const server = servers.find((candidate: any) => candidate.id === req.params.id);
   if (!server) return res.status(404).json({ error: "Server not found" });
   const user = req.user;
-  if (user?.role !== "admin" && user?.role !== "owner" && server.owner !== user?.id) {
+  const isStaff = user?.role === "admin" || user?.role === "owner";
+  const isOwner = server.owner === user?.id;
+  const subUser = (server.subUsers || []).find((member: any) => member.userId === user?.id);
+  if (!isStaff && !isOwner && !subUser) {
     return res.status(403).json({ error: "Forbidden" });
   }
   req.server = server;

@@ -23,9 +23,17 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
 const app = express();
 app.disable("x-powered-by");
 const httpServer = process.env.PANEL_TLS_KEY && process.env.PANEL_TLS_CERT ? createHttpsServer({key:fs.readFileSync(process.env.PANEL_TLS_KEY),cert:fs.readFileSync(process.env.PANEL_TLS_CERT)},app) : createHttpServer(app);
-const allowedOrigin = process.env.PANEL_ORIGIN || true;
+const configuredOrigins = (process.env.PANEL_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const isAllowedOrigin = (origin?: string) => {
+  if (!origin) return true;
+  if (configuredOrigins.length === 0 && process.env.NODE_ENV !== "production") return true;
+  return configuredOrigins.includes(origin);
+};
 export const io = new SocketIOServer(httpServer, {
-  cors: { origin: allowedOrigin, credentials: true },
+  cors: { origin: (origin, callback) => callback(null, isAllowedOrigin(origin)), credentials: true },
 });
 app.set("io", io);
 
@@ -129,7 +137,7 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(cors({
-  origin: process.env.PANEL_ORIGIN || true,
+  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   credentials: true,
 }));
 app.get("/health", (_req, res) => res.json({ ok: true, service: "shironex-panel", timestamp: new Date().toISOString() }));
