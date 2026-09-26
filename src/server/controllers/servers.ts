@@ -33,9 +33,13 @@ const nodeStatusForServer=(node:any)=>{
  return Number.isFinite(heartbeat) && Date.now()-heartbeat<=45_000 ? "ONLINE" : "OFFLINE";
 };
 
-const canManageServer = (req: Request, server: any) => {
+const canManageServer = (req: Request, server: any, permission?: string) => {
   const user = (req as any).user;
-  return user?.role === "admin" || user?.role === "owner" || server?.owner === user?.id;
+  if (user?.role === "admin" || user?.role === "owner" || server?.owner === user?.id) return true;
+  const member = (server?.subUsers || []).find((entry: any) => entry.userId === user?.id);
+  if (!member) return false;
+  const permissions = Array.isArray(member.permissions) ? member.permissions : [];
+  return permission ? permissions.includes(permission) : permissions.length > 0;
 };
 
 const ensureLocalWorkspaceFiles = async (server: any) => {
@@ -454,7 +458,7 @@ export const startServer = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
-    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
+    if (!canManageServer(req, server, "start")) return res.status(403).json({ error: "You do not have permission to start this server" });
     if (server.suspended) {
       return res.status(403).json({ error: "Server is suspended" });
     }
@@ -493,7 +497,7 @@ export const stopServer = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
-    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
+    if (!canManageServer(req, server, "stop")) return res.status(403).json({ error: "You do not have permission to stop this server" });
     try {
       await stopContainer(server.containerId, server.nodeId);
     } catch (stopErr: any) {
@@ -521,7 +525,7 @@ export const restartServer = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
-    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
+    if (!canManageServer(req, server, "restart")) return res.status(403).json({ error: "You do not have permission to restart this server" });
     if (server.suspended) return res.status(403).json({ error: "Server is suspended" });
     try {
       const io = req.app.get("io");
@@ -559,7 +563,7 @@ export const sendCommand = async (req: Request, res: Response) => {
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
-    if (!canManageServer(req, server)) return res.status(403).json({ error: "Forbidden" });
+    if (!canManageServer(req, server, "start")) return res.status(403).json({ error: "You do not have permission to use the console" });
     if (typeof command !== "string" || command.length === 0 || command.length > 4096) return res.status(400).json({ error: "Invalid command" });
     await sendContainerCommand(server.containerId, command, server.nodeId);
     res.json({ success: true });
