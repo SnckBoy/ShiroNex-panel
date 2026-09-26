@@ -1054,35 +1054,37 @@ export const createBackup = async (req: Request, res: Response) => {
   }
 };
 
+const safeBackupFilename = (value: unknown) => {
+  const filename = path.basename(String(value || ""));
+  if (filename !== String(value || "") || !/^backup-[a-zA-Z0-9T_.-]+\\.zip$/.test(filename)) throw new Error("Invalid backup filename");
+  return filename;
+};
+
 export const downloadBackup = async (req: Request, res: Response) => {
-  const { id, filename } = req.params;
-  const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
-
-  // basic path traversal prevention
-  if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
-    return res.status(403).send("Invalid path");
-  }
-
-  if (await fs.pathExists(backupPath)) {
-    res.download(backupPath);
-  } else {
-    res.status(404).send("Backup not found");
+  const { id } = req.params;
+  try {
+    const filename = safeBackupFilename(req.params.filename);
+    const backupRoot = path.resolve(process.cwd(), ".data", "backups", id);
+    const backupPath = path.resolve(backupRoot, filename);
+    if (!backupPath.startsWith(`${backupRoot}${path.sep}`)) return res.status(403).send("Invalid path");
+    if (await fs.pathExists(backupPath)) return res.download(backupPath);
+    return res.status(404).send("Backup not found");
+  } catch (error: any) {
+    return res.status(400).json({ error: error?.message || "Invalid backup filename" });
   }
 };
 
 export const deleteBackup = async (req: Request, res: Response) => {
-  const { id, filename } = req.params;
-  const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
-
-  if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
-    return res.status(403).json({ error: "Invalid path" });
-  }
-
+  const { id } = req.params;
   try {
+    const filename = safeBackupFilename(req.params.filename);
+    const backupRoot = path.resolve(process.cwd(), ".data", "backups", id);
+    const backupPath = path.resolve(backupRoot, filename);
+    if (!backupPath.startsWith(`${backupRoot}${path.sep}`)) return res.status(403).json({ error: "Invalid path" });
     await fs.remove(backupPath);
-    res.json({ success: true });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(400).json({ error: error?.message || "Invalid backup filename" });
   }
 };
 const MAX_MARKETPLACE_FILE_BYTES = 80 * 1024 * 1024;
