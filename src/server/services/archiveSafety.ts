@@ -27,14 +27,14 @@ export async function listSafeZipEntries(archivePath: string): Promise<string[]>
 export async function extractZipSafely(archivePath: string, destination: string): Promise<string[]> {
   const entries = await listSafeZipEntries(archivePath);
   await fs.ensureDir(destination);
-  await execFileAsync("unzip", ["-q", "-o", archivePath, "-d", destination], { maxBuffer: 2 * 1024 * 1024 });
-  for (const entry of entries) {
-    const resolved = path.resolve(destination, entry);
-    if (resolved !== path.resolve(destination) && !resolved.startsWith(`${path.resolve(destination)}${path.sep}`)) {
-      throw new Error("Archive extraction escaped its destination");
-    }
+  const staging = await fs.mkdtemp(path.join(path.dirname(destination), ".shironex-extract-"));
+  try {
+    await execFileAsync("unzip", ["-q", "-o", archivePath, "-d", staging], { maxBuffer: 2 * 1024 * 1024 });
+    await copyDirectorySafely(staging, destination);
+    return entries;
+  } finally {
+    await fs.remove(staging);
   }
-  return entries;
 }
 
 export async function copyDirectorySafely(source: string, destination: string): Promise<void> {

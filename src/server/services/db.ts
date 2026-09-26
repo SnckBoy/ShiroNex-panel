@@ -14,5 +14,12 @@ export const readJSON = async (filename: string) => {
 
 export const writeJSON = async (filename: string, data: any) => {
   const filePath = path.join(DATA_DIR, filename);
-  await fs.writeJson(filePath, data, { spaces: 2 });
+  await fs.ensureDir(DATA_DIR);
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await fs.writeJson(tempPath, data, { spaces: 2, mode: 0o600 });
+    await fs.rename(tempPath, filePath);
+  } finally {
+    await fs.remove(tempPath);
+  }
 };
